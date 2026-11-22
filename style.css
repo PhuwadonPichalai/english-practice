@@ -791,3 +791,6 @@ body.sheet-open { overflow: hidden; }
   .ph-level { grid-template-columns: auto minmax(0, 1fr); }
   .ph-xp { grid-column: 1 / -1; }
 }
+.show-pass { display: flex !important; align-items: center; gap: 8px; font-weight: 400 !important; color: var(--muted); cursor: pointer; }
+.show-pass input { width: 18px; height: 18px; accent-color: var(--ink); margin: 0; }
+.field.invalid { border-color: var(--bad); }

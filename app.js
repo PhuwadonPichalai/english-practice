@@ -12,14 +12,15 @@
   ];
 
   const MODES = [
-    { id: "flash", icon: "🃏", title: "แฟลชการ์ด", desc: "ดูคำศัพท์ พลิกดูความหมาย แล้วบอกว่าจำได้ไหม" },
-    { id: "en2th", icon: "ก", title: "เลือกความหมาย", desc: "เห็นคำอังกฤษ เลือกความหมายภาษาไทยที่ถูก" },
-    { id: "th2en", icon: "🔤", title: "เลือกคำศัพท์", desc: "เห็นความหมายไทย เลือกคำภาษาอังกฤษที่ถูก" },
-    { id: "spell", icon: "⌨️", title: "พิมพ์สะกดคำ", desc: "เห็นความหมายไทย พิมพ์คำภาษาอังกฤษให้ถูก" },
-    { id: "listen", icon: "🎧", title: "ฟังแล้วตอบ", desc: "ฟังเสียงคำศัพท์ แล้วเลือกความหมายที่ถูก" },
-    { id: "blank", icon: "✏️", title: "เติมคำในประโยค", desc: "เลือกคำที่เหมาะกับช่องว่างในประโยค" },
+    { id: "flash", icon: "", title: "แฟลชการ์ด", desc: "ดูคำศัพท์ พลิกดูความหมาย แล้วบอกว่าจำได้ไหม" },
+    { id: "en2th", icon: "", title: "เลือกความหมาย", desc: "เห็นคำอังกฤษ เลือกความหมายภาษาไทยที่ถูก" },
+    { id: "th2en", icon: "", title: "เลือกคำศัพท์", desc: "เห็นความหมายไทย เลือกคำภาษาอังกฤษที่ถูก" },
+    { id: "spell", icon: "", title: "พิมพ์สะกดคำ", desc: "เห็นความหมายไทย พิมพ์คำภาษาอังกฤษให้ถูก" },
+    { id: "listen", icon: "", title: "ฟังแล้วตอบ", desc: "ฟังเสียงคำศัพท์ แล้วเลือกความหมายที่ถูก" },
+    { id: "blank", icon: "", title: "เติมคำในประโยค", desc: "เลือกคำที่เหมาะกับช่องว่างในประโยค" },
   ];
 
+  const ICONS = {flash: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 6V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"/></svg>`, en2th: `<span style="font:700 17px var(--serif)">A</span><span style="font:600 16px var(--sans)">ก</span>`, th2en: `<span style="font:600 16px var(--sans)">ก</span><span style="font:700 17px var(--serif)">A</span>`, spell: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>`, listen: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>`, blank: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12h4M17 12h4"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" stroke="none" opacity=".35"/></svg>`};
   const COUNTS = [10, 20, 30];
 
   // ---------------- data ----------------
@@ -154,54 +155,98 @@
   window.addEventListener("hashchange", () => { if (location.hash === "#library") renderLibrary(); });
 
   // ---------------- home ----------------
+  let wotdOffset = 0, homeAnimated = false;
+  function wordOfDay() {
+    const d = new Date();
+    const seed = d.getFullYear() * 400 + d.getMonth() * 31 + d.getDate();
+    return ALL_WORDS[(seed * 7919 + wotdOffset) % ALL_WORDS.length];
+  }
+  function highlight(sentence, word, cls) {
+    const re = new RegExp("\\b(" + word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")\\b", "i");
+    return esc(sentence).replace(re, `<mark class="hl ${cls || ""}">$1</mark>`);
+  }
+  const CHEV = '<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
+  const SPK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>';
+
   function renderHome() {
     setNav("home");
     const level = data.settings.level;
     const pool = poolFor(level);
     const mastered = ALL_WORDS.filter((w) => status(w.word) === "mastered").length;
+    const w = wordOfDay();
+    const anim = homeAnimated ? "" : "hl-anim";
+    homeAnimated = true;
+    const streak = currentStreak();
+    const greet = (data.totalAnswered || 0) === 0
+      ? "เริ่มจากคำนี้ก่อนก็ได้ แล้วเลือกระดับกับวิธีฝึกด้านล่าง"
+      : streak > 0 ? `ฝึกต่อเนื่องมา <b>${streak} วัน</b> แล้ว มาต่อกันเลย` : "กลับมาฝึกต่อกันเลย";
+    const levelPct = (id) => {
+      const p = poolFor(id);
+      return Math.round((p.filter((x) => status(x.word) === "mastered").length / p.length) * 100);
+    };
 
     $app.innerHTML = `
-      <section class="hero">
-        <h1>ฝึกศัพท์อังกฤษ วันละนิด</h1>
-        <p>เลือกระดับและโหมดที่อยากฝึก ระบบจะสุ่มคำที่คุณยังไม่แม่นมาให้ก่อน</p>
-      </section>
-
-      <section class="stats">
-        <div class="stat"><div class="stat-value">${currentStreak()} 🔥</div><div class="stat-label">วันติดต่อกัน</div></div>
-        <div class="stat"><div class="stat-value">${mastered}<span style="font-size:14px;color:var(--muted);font-weight:500"> / ${ALL_WORDS.length}</span></div><div class="stat-label">คำที่จำได้แล้ว</div></div>
-        <div class="stat"><div class="stat-value">${data.totalAnswered || 0}</div><div class="stat-label">ข้อที่ทำไปแล้ว</div></div>
-      </section>
-
-      <section class="section">
-        <h2 class="section-title">ระดับ (CEFR)</h2>
-        <div class="chips" id="levels">
-          ${LEVELS.map((l) => `<button class="chip ${l.id === level ? "active" : ""}" data-level="${l.id}">${l.name}${l.desc ? ` <small>${l.desc}</small>` : ""}</button>`).join("")}
+      <section class="wotd">
+        <p class="greet">${greet}</p>
+        <div class="tags"><span class="tag">คำประจำวัน</span><span class="tag">${w.level}</span></div>
+        <h1 class="headword">${esc(w.word)}</h1>
+        <div class="entry-line"><span class="pos-i">${esc(w.pos)}</span><span>${esc(w.th)}</span></div>
+        <p class="example">${highlight(w.ex, w.word, anim)}</p>
+        <div class="entry-actions">
+          ${canSpeak ? `<button class="btn ghost" data-speak="${esc(w.word)}">${SPK} ฟังเสียง</button>` : ""}
+          <button class="btn ghost" id="nextWord">สุ่มคำอื่น</button>
+        </div>
+        <div class="figures">
+          <div class="figure"><b>${streak}</b><span>วันติดต่อกัน</span></div>
+          <div class="figure"><b>${mastered}<small style="font-size:16px;color:var(--muted)"> / ${ALL_WORDS.length}</small></b><span>คำที่จำได้แล้ว</span></div>
+          <div class="figure"><b>${data.totalAnswered || 0}</b><span>ข้อที่ทำไปแล้ว</span></div>
         </div>
       </section>
 
       <section class="section">
-        <h2 class="section-title">จำนวนข้อต่อรอบ</h2>
-        <div class="chips" id="counts">
-          ${COUNTS.map((c) => `<button class="chip ${c === data.settings.count ? "active" : ""}" data-count="${c}">${c} ข้อ</button>`).join("")}
+        <div class="section-head">
+          <div><h2>เลือกระดับ</h2><p>ระดับตามมาตรฐาน CEFR แถบสีในแต่ละขั้นคือสัดส่วนคำที่จำได้แล้ว</p></div>
+        </div>
+        <div class="ladder">
+          ${LEVELS.filter((l) => l.id !== "ALL").map((l) => {
+            const pct = levelPct(l.id);
+            return `<button class="step ${l.id === level ? "active" : ""}" data-level="${l.id}" aria-pressed="${l.id === level}">
+              <span class="fill" style="height:${pct}%"></span>
+              <span class="step-name">${l.name}</span>
+              <span class="step-desc">${l.desc}</span>
+              <span class="step-pct"><span class="pct-label">จำได้ </span>${pct}%</span>
+            </button>`;
+          }).join("")}
+        </div>
+        <div class="ladder-foot">
+          <button class="pill ${level === "ALL" ? "active" : ""}" data-level="ALL">รวมทุกระดับ</button>
+          <small>ระดับนี้มี ${pool.length} คำ</small>
         </div>
       </section>
 
       <section class="section">
-        <h2 class="section-title">โหมดฝึก · ${pool.length} คำในระดับนี้</h2>
-        <div class="modes">
+        <div class="section-head">
+          <div><h2>เลือกวิธีฝึก</h2><p>คำที่ตอบผิดบ่อยจะถูกสุ่มมาให้ก่อน</p></div>
+          <div class="seg" role="group" aria-label="จำนวนข้อต่อรอบ">
+            ${COUNTS.map((c) => `<button class="${c === data.settings.count ? "active" : ""}" data-count="${c}">${c} ข้อ</button>`).join("")}
+          </div>
+        </div>
+        <div class="mode-list">
           ${MODES.map((m) => {
             const best = data.best[level + ":" + m.id];
-            return `<button class="mode" data-mode="${m.id}">
-              <span class="mode-icon">${m.icon}</span>
-              <span class="mode-title">${m.title}</span>
-              <span class="mode-desc">${m.desc}</span>
-              ${best != null ? `<span class="mode-best">คะแนนดีที่สุด ${best}%</span>` : ""}
+            return `<button class="mode-row" data-mode="${m.id}">
+              <span class="glyph">${ICONS[m.id]}</span>
+              <span><span class="mode-title">${m.title}</span><span class="mode-desc">${m.desc}</span></span>
+              <span class="mode-best">${best != null ? `ดีที่สุด <b>${best}%</b>` : "ยังไม่เคยเล่น"}</span>
+              ${CHEV}
             </button>`;
           }).join("")}
         </div>
       </section>
     `;
 
+    bindSpeak();
+    $app.querySelector("#nextWord").addEventListener("click", () => { wotdOffset += 1; homeAnimated = false; renderHome(); });
     $app.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("click", () => { data.settings.level = b.dataset.level; persist(); renderHome(); }));
     $app.querySelectorAll("[data-count]").forEach((b) => b.addEventListener("click", () => { data.settings.count = +b.dataset.count; persist(); renderHome(); }));
     $app.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => startSession(b.dataset.mode)));
@@ -250,7 +295,7 @@
       });
       case "listen": return renderChoice(w, {
         label: "ฟังแล้วเลือกความหมายที่ถูกต้อง",
-        prompt: `<button class="speak-big" id="bigSpeak" aria-label="ฟังอีกครั้ง">🔊</button><div class="hint">${canSpeak ? "กดเพื่อฟังอีกครั้ง" : "เบราว์เซอร์นี้ไม่รองรับเสียง"}</div>`,
+        prompt: `<button class="speak-big" id="bigSpeak" aria-label="ฟังอีกครั้ง"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button><div class="hint">${canSpeak ? "กดเพื่อฟังอีกครั้ง" : "เบราว์เซอร์นี้ไม่รองรับเสียง"}</div>`,
         field: "th",
         autoSpeak: true,
       });
@@ -264,7 +309,7 @@
   }
 
   function speakBtn(text) {
-    return canSpeak ? `<div><button class="speak" data-speak="${esc(text)}">🔊 ฟังเสียง</button></div>` : "";
+    return canSpeak ? `<div><button class="speak" data-speak="${esc(text)}">${SPK} ฟังเสียง</button></div>` : "";
   }
   function bindSpeak(root = $app) {
     root.querySelectorAll("[data-speak]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); speak(b.dataset.speak); }));
@@ -278,7 +323,7 @@
   }
 
   function feedbackDetail(w) {
-    return `<div class="fb-detail"><b>${esc(w.word)}</b> <span style="color:var(--muted)">${esc(w.pos)}</span> — ${esc(w.th)}<br><i>${esc(w.ex)}</i></div>`;
+    return `<div class="fb-detail"><span class="w">${esc(w.word)}</span> <span class="pos-i" style="font:italic 14px var(--serif);color:var(--muted)">${esc(w.pos)}</span>&nbsp; ${esc(w.th)}<span class="ex">${highlight(w.ex, w.word)}</span></div>`;
   }
 
   // ----- multiple choice -----
@@ -291,11 +336,11 @@
         ${cfg.prompt}
       </div>
       <div class="options">
-        ${opts.map((o, idx) => `<button class="option" data-idx="${idx}"><span class="key">${idx + 1}</span><span>${esc(o[cfg.field])}</span></button>`).join("")}
+        ${opts.map((o, idx) => `<button class="option ${cfg.field === "word" ? "en" : ""}" data-idx="${idx}"><span class="key">${idx + 1}</span><span>${esc(o[cfg.field])}</span></button>`).join("")}
       </div>
       <div class="feedback" id="fb"></div>
       <div class="next-row" id="nextRow"></div>
-      <div class="kbd-hint">กด 1–4 เพื่อเลือก · Enter เพื่อไปข้อถัดไป</div>
+      <div class="kbd-hint">กด <kbd>1</kbd>–<kbd>4</kbd> เพื่อเลือก แล้วกด <kbd>Enter</kbd> ไปข้อถัดไป</div>
     `;
     bindQuit(); bindSpeak();
     const big = $app.querySelector("#bigSpeak");
@@ -331,7 +376,7 @@
         <div class="prompt-label">พิมพ์คำภาษาอังกฤษของคำนี้</div>
         <p class="prompt-thai">${esc(w.th)}</p>
         <span class="pos">${esc(w.pos)}</span>
-        <div class="hint" style="letter-spacing:.15em;font-family:ui-monospace,monospace">${esc(hint)}</div>
+        <div class="spell-hint">${esc(hint)}</div>
       </div>
       <form class="answer-row" id="spellForm" autocomplete="off">
         <input class="text-input" id="spellInput" placeholder="พิมพ์คำตอบ…" autocapitalize="off" autocorrect="off" spellcheck="false" />
@@ -339,7 +384,7 @@
       </form>
       <div class="feedback" id="fb"></div>
       <div class="next-row" id="nextRow"></div>
-      <div class="kbd-hint">กด Enter เพื่อตรวจ · Enter อีกครั้งเพื่อไปข้อถัดไป</div>
+      <div class="kbd-hint">กด <kbd>Enter</kbd> เพื่อตรวจ และกดอีกครั้งเพื่อไปข้อถัดไป</div>
     `;
     bindQuit();
     const input = $app.querySelector("#spellInput");
@@ -381,10 +426,10 @@
         </div>
       </div>
       <div class="flash-actions">
-        <button class="btn ghost" id="fNo">😕 ยังจำไม่ได้</button>
-        <button class="btn" id="fYes">👍 จำได้แล้ว</button>
+        <button class="btn ghost" id="fNo">ยังจำไม่ได้</button>
+        <button class="btn hl-btn" id="fYes">จำได้แล้ว</button>
       </div>
-      <div class="kbd-hint">Space พลิกการ์ด · 1 ยังจำไม่ได้ · 2 จำได้แล้ว</div>
+      <div class="kbd-hint"><kbd>Space</kbd> พลิกการ์ด, <kbd>1</kbd> ยังจำไม่ได้, <kbd>2</kbd> จำได้แล้ว</div>
     `;
     bindQuit(); bindSpeak();
     const card = $app.querySelector("#flash");
@@ -410,11 +455,13 @@
   function answer(w, ok) {
     record(w.word, ok);
     if (ok) S.correct++; else S.wrong.push(w);
+    const blank = $app.querySelector(".blank");
+    if (blank) { blank.textContent = w.word; blank.classList.add("filled"); }
     const fb = $app.querySelector("#fb");
     fb.className = "feedback show " + (ok ? "good" : "bad");
-    fb.innerHTML = (ok ? "✓ ถูกต้อง!" : "✗ ยังไม่ถูก คำตอบคือ") + feedbackDetail(w);
+    fb.innerHTML = `<div class="fb-title">${ok ? "ถูกต้อง" : "ยังไม่ถูก คำตอบที่ถูกคือ"}</div>` + feedbackDetail(w);
     const last = S.i === S.words.length - 1;
-    $app.querySelector("#nextRow").innerHTML = `<button class="btn" id="nextBtn">${last ? "ดูผลลัพธ์" : "ข้อถัดไป →"}</button>`;
+    $app.querySelector("#nextRow").innerHTML = `<button class="btn" id="nextBtn">${last ? "ดูผลลัพธ์" : "ข้อถัดไป"}</button>`;
     const nb = $app.querySelector("#nextBtn");
     nb.addEventListener("click", next);
     if (S.mode !== "spell") nb.focus({ preventScroll: true });
@@ -437,23 +484,15 @@
     const prevBest = data.best[key];
     const isBest = prevBest == null || pct > prevBest;
     if (isBest) { data.best[key] = pct; persist(); }
-    const r = 60, c = 2 * Math.PI * r;
-    const msg = pct === 100 ? "เพอร์เฟกต์! 🎉" : pct >= 80 ? "เก่งมาก!" : pct >= 50 ? "ดีขึ้นเรื่อยๆ" : "ฝึกต่ออีกนิด สู้ๆ";
+    const msg = pct === 100 ? "เพอร์เฟกต์ ถูกทุกข้อ" : pct >= 80 ? "เก่งมาก!" : pct >= 50 ? "ดีขึ้นเรื่อยๆ" : "ฝึกต่ออีกนิด สู้ๆ";
     const modeTitle = MODES.find((m) => m.id === S.mode).title;
     const levelName = LEVELS.find((l) => l.id === S.level).name;
 
     $app.innerHTML = `
       <div class="result">
-        <div class="score-ring">
-          <svg width="140" height="140" viewBox="0 0 140 140">
-            <circle cx="70" cy="70" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="10"/>
-            <circle cx="70" cy="70" r="${r}" fill="none" stroke="var(--accent)" stroke-width="10" stroke-linecap="round"
-              stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - pct / 100)}"/>
-          </svg>
-          <div class="num">${pct}%</div>
-        </div>
+        <div class="score-big">${S.correct}<small> / ${total}</small></div>
         <h2>${msg}</h2>
-        <p>${modeTitle} · ${levelName} — ถูก ${S.correct} จาก ${total} ข้อ${isBest && prevBest != null ? " · สถิติใหม่!" : ""}</p>
+        <p>${modeTitle} ระดับ ${levelName}${isBest && prevBest != null ? " (ทำลายสถิติเดิม " + prevBest + "%)" : ""}</p>
         <div class="result-actions">
           <button class="btn" id="again">เล่นอีกรอบ</button>
           ${S.wrong.length ? `<button class="btn ghost" id="retryWrong">ฝึกเฉพาะคำที่ผิด (${S.wrong.length})</button>` : ""}
@@ -461,9 +500,9 @@
         </div>
         ${S.wrong.length ? `
           <div class="review">
-            <h3 class="section-title">คำที่ควรทบทวน</h3>
+            <h3>คำที่ควรทบทวน</h3>
             <div class="word-list">
-              ${S.wrong.map((w) => `<div class="review-item" style="padding:12px 16px;background:var(--surface)"><b>${esc(w.word)} <small style="color:var(--muted);font-weight:400">${esc(w.pos)}</small></b><span>${esc(w.th)}</span></div>`).join("")}
+              ${S.wrong.map((w) => `<div class="word-row"><i class="dot ${status(w.word)}"></i><div><div class="w">${esc(w.word)}<small>${esc(w.pos)}</small></div><div class="t">${esc(w.th)}</div></div>${canSpeak ? `<button class="mini-speak" data-speak="${esc(w.word)}" aria-label="ฟังเสียง">${SPK}</button>` : "<span></span>"}</div>`).join("")}
             </div>
           </div>` : ""}
       </div>
@@ -475,6 +514,7 @@
       S = { mode: S.mode, level: S.level, words: shuffle(S.wrong), i: 0, correct: 0, wrong: [], answered: false };
       renderQuestion();
     });
+    bindSpeak();
     window.scrollTo(0, 0);
   }
 
@@ -485,12 +525,10 @@
     keyHandler = null;
     if (!libLevel) libLevel = data.settings.level;
     $app.innerHTML = `
-      <section class="hero">
-        <h1>คลังคำศัพท์</h1>
-        <p>ดูคำทั้งหมดในแต่ละระดับ และความคืบหน้าของคุณ</p>
-      </section>
-      <div class="chips" style="margin-bottom:16px">
-        ${LEVELS.map((l) => `<button class="chip ${l.id === libLevel ? "active" : ""}" data-lib="${l.id}">${l.name}</button>`).join("")}
+      <h1 class="page-title">คลังคำศัพท์</h1>
+      <p class="page-sub">ดูคำทั้งหมดในแต่ละระดับ พร้อมสถานะว่าคำไหนจำได้แล้ว</p>
+      <div class="seg" style="margin-bottom:14px;flex-wrap:wrap">
+        ${LEVELS.map((l) => `<button class="${l.id === libLevel ? "active" : ""}" data-lib="${l.id}">${l.name}</button>`).join("")}
       </div>
       <div class="lib-toolbar">
         <input class="search" id="q" placeholder="ค้นหาคำศัพท์หรือความหมาย…" value="${esc(libQuery)}" />
@@ -499,7 +537,7 @@
         <span><i class="dot"></i> ยังไม่เคยฝึก</span>
         <span><i class="dot learning"></i> กำลังเรียนรู้</span>
         <span><i class="dot mastered"></i> จำได้แล้ว</span>
-        <button class="link-btn" id="reset" style="margin-left:auto">ล้างความคืบหน้าทั้งหมด</button>
+        <button class="link-btn" id="reset">ล้างความคืบหน้าทั้งหมด</button>
       </div>
       <div class="word-list" id="list"></div>
     `;
@@ -509,8 +547,8 @@
       $app.querySelector("#list").innerHTML = list.length
         ? list.map((w) => `<div class="word-row">
             <i class="dot ${status(w.word)}"></i>
-            <div><div class="w">${esc(w.word)}<small>${esc(w.pos)}${libLevel === "ALL" ? " · " + w.level : ""}</small></div><div class="t">${esc(w.th)}</div></div>
-            ${canSpeak ? `<button class="mini-speak" data-speak="${esc(w.word)}" aria-label="ฟังเสียง">🔊</button>` : "<span></span>"}
+            <div><div class="w">${esc(w.word)}<small>${esc(w.pos)}${libLevel === "ALL" ? ", " + w.level : ""}</small></div><div class="t">${esc(w.th)}</div></div>
+            ${canSpeak ? `<button class="mini-speak" data-speak="${esc(w.word)}" aria-label="ฟังเสียง">${SPK}</button>` : "<span></span>"}
           </div>`).join("")
         : `<div class="empty">ไม่พบคำที่ค้นหา</div>`;
       bindSpeak($app.querySelector("#list"));

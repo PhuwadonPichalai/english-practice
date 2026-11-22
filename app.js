@@ -373,15 +373,15 @@
       ${todayPanel()}
 
       <section class="quick">
-        <button class="quick-btn primary" id="continue">
+        <button class="quick-btn primary" id="startBtn">
           <span class="quick-icon">${PLAY}</span>
-          <span><b>${first ? "เริ่มฝึกเลย" : "ฝึกต่อ"}</b><span>${modeTitle(lastMode)} ระดับ ${levelName(level)}, ${data.settings.count} ข้อ</span></span>
+          <span><b>เริ่มฝึก</b><span>เลือกระดับ วิธีฝึก และจำนวนข้อที่อยากเล่น</span></span>
         </button>
         <button class="quick-btn challenge-btn" id="quickSpeed">
           <span class="quick-icon">${CLOCK}</span>
           <span><b>ท้าทาย 60 วินาที</b><span>${speedBest != null ? `สถิติของคุณ ${speedBest} ข้อ` : "ตอบให้ได้มากที่สุดก่อนหมดเวลา"}</span></span>
         </button>
-        <button class="quick-link" data-go="practice">เลือกระดับหรือวิธีฝึกอื่น ${CHEV}</button>
+        ${first ? "" : `<button class="quick-link" id="continue">ฝึกต่อแบบเดิม: ${modeTitle(lastMode)} ระดับ ${levelName(level)}, ${data.settings.count} ข้อ ${CHEV}</button>`}
       </section>
 
       <section class="wotd card-soft">
@@ -397,48 +397,28 @@
     `;
     bindSpeak();
     $app.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
-    $app.querySelector("#continue").addEventListener("click", () => startSession(lastMode));
-    $app.querySelector("#quickSpeed").addEventListener("click", () => startSession("speed"));
+    $app.querySelector("#startBtn").addEventListener("click", () => openSetup());
+    $app.querySelector("#quickSpeed").addEventListener("click", () => openSetup({ mode: "speed" }));
+    const cont = $app.querySelector("#continue");
+    if (cont) cont.addEventListener("click", () => startSession(lastMode));
     $app.querySelector("#nextWord").addEventListener("click", () => { wotdOffset += 1; homeAnimated = false; renderHome(); });
   }
 
   // ---------------- page: practice ----------------
   function renderPractice() {
     const level = data.settings.level;
-    const pool = poolFor(level);
     const speedBest = data.best[level + ":speed"];
     $app.innerHTML = `
       <h1 class="page-title">ฝึก</h1>
-      <p class="page-sub">เลือกระดับ แล้วกดเลือกวิธีฝึกเพื่อเริ่มเล่น คำที่คุณตอบผิดบ่อยจะถูกสุ่มมาให้ก่อน</p>
+      <p class="page-sub">กดเริ่มฝึกเพื่อเลือกระดับ วิธีฝึก และจำนวนข้อ หรือกดที่โหมดด้านล่างเพื่อเริ่มจากโหมดนั้น</p>
+
+      <button class="quick-btn primary wide" id="startBtn">
+        <span class="quick-icon">${PLAY}</span>
+        <span><b>เริ่มฝึก</b><span>ตอนนี้ตั้งไว้ที่ระดับ ${levelName(level)}, ${data.settings.count} ข้อต่อรอบ</span></span>
+      </button>
 
       <section class="section">
-        <div class="step-head"><span class="step-no">1</span><div><h2>เลือกระดับ</h2><p>แถบสีในแต่ละขั้นคือสัดส่วนคำที่จำได้แล้ว</p></div></div>
-        <div class="ladder">
-          ${LEVELS.filter((l) => l.id !== "ALL").map((l) => {
-            const pct = levelPct(l.id);
-            return `<button class="step ${l.id === level ? "active" : ""}" data-level="${l.id}" aria-pressed="${l.id === level}">
-              <span class="fill" style="height:${pct}%"></span>
-              <span class="step-name">${l.name}</span>
-              <span class="step-desc">${l.desc}</span>
-              <span class="step-pct"><span class="pct-label">จำได้ </span>${pct}%</span>
-            </button>`;
-          }).join("")}
-        </div>
-        <div class="ladder-foot">
-          <button class="pill ${level === "ALL" ? "active" : ""}" data-level="ALL">รวมทุกระดับ</button>
-          <small>ระดับ ${levelName(level)} มี ${pool.length} คำ</small>
-        </div>
-      </section>
-
-      <section class="section">
-        <div class="step-head between">
-          <div class="step-head"><span class="step-no">2</span><div><h2>เลือกวิธีฝึก</h2><p>กดที่โหมดเพื่อเริ่มทันที</p></div></div>
-          <label class="count-pick">จำนวนข้อ
-            <span class="seg" role="group" aria-label="จำนวนข้อต่อรอบ">
-              ${COUNTS.map((c) => `<button class="${c === data.settings.count ? "active" : ""}" data-count="${c}">${c}</button>`).join("")}
-            </span>
-          </label>
-        </div>
+        <div class="section-head"><div><h2>โหมดทั้งหมด</h2><p>คะแนนดีที่สุดที่แสดงเป็นของระดับ ${levelName(level)}</p></div></div>
         <button class="challenge" data-mode="speed">
           <span class="challenge-clock" aria-hidden="true">${CLOCK}</span>
           <span class="challenge-text"><b>ท้าทาย 60 วินาที</b><span>ตอบให้ถูกมากที่สุดก่อนหมดเวลา ยิ่งตอบถูกติดกันยิ่งได้ XP เยอะ</span></span>
@@ -457,9 +437,87 @@
         </div>
       </section>
     `;
-    $app.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("click", () => { data.settings.level = b.dataset.level; persist(); renderPractice(); }));
-    $app.querySelectorAll("[data-count]").forEach((b) => b.addEventListener("click", (e) => { e.preventDefault(); data.settings.count = +b.dataset.count; persist(); renderPractice(); }));
-    $app.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => startSession(b.dataset.mode)));
+    $app.querySelector("#startBtn").addEventListener("click", () => openSetup());
+    $app.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => openSetup({ mode: b.dataset.mode })));
+  }
+
+  // ---------------- setup sheet (choose level, mode, count) ----------------
+  const ALL_MODES = () => [{ id: "speed", title: "ท้าทาย 60 วินาที", desc: "แข่งกับเวลา" }].concat(MODES);
+  function openSetup(preset = {}) {
+    const draft = {
+      level: data.settings.level,
+      mode: preset.mode || data.settings.lastMode || "en2th",
+      count: data.settings.count,
+    };
+    let dlg = document.getElementById("setup");
+    if (!dlg) {
+      dlg = document.createElement("dialog");
+      dlg.id = "setup";
+      dlg.className = "sheet";
+      dlg.setAttribute("aria-labelledby", "setupTitle");
+      document.body.appendChild(dlg);
+      dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+      dlg.addEventListener("close", () => document.body.classList.remove("sheet-open"));
+    }
+    const draw = () => {
+      const speed = draft.mode === "speed";
+      const n = poolFor(draft.level).length;
+      dlg.innerHTML = `
+        <div class="sheet-inner">
+          <div class="sheet-head">
+            <h2 id="setupTitle">ตั้งค่าก่อนเริ่มฝึก</h2>
+            <button class="back" id="closeSetup" aria-label="ปิด"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div class="sheet-body">
+            <fieldset class="pick">
+              <legend><span class="step-no">1</span>เลือกระดับ</legend>
+              <div class="level-grid">
+                ${LEVELS.map((l) => {
+                  const p = poolFor(l.id);
+                  const m = p.filter((x) => status(x.word) === "mastered").length;
+                  return `<button type="button" class="opt ${draft.level === l.id ? "on" : ""}" data-pl="${l.id}" aria-pressed="${draft.level === l.id}">
+                    <b>${l.name}</b><span>${l.desc || "สุ่มจากทุกระดับ"}</span><small>จำได้ ${m}/${p.length}</small>
+                  </button>`;
+                }).join("")}
+              </div>
+            </fieldset>
+            <fieldset class="pick">
+              <legend><span class="step-no">2</span>เลือกวิธีฝึก</legend>
+              <div class="mode-grid">
+                ${ALL_MODES().map((m) => `<button type="button" class="opt mode-opt ${draft.mode === m.id ? "on" : ""} ${m.id === "speed" ? "is-speed" : ""}" data-pm="${m.id}" aria-pressed="${draft.mode === m.id}">
+                  <span class="glyph g-${m.id}">${m.id === "speed" ? CLOCK.replace(/36/g, "22") : ICONS[m.id]}</span><b>${m.title}</b>
+                </button>`).join("")}
+              </div>
+            </fieldset>
+            <fieldset class="pick">
+              <legend><span class="step-no">3</span>จำนวนข้อ</legend>
+              ${speed
+                ? `<p class="pick-note">โหมดนี้ไม่จำกัดจำนวนข้อ ตอบได้เรื่อยๆ จนครบ 60 วินาที</p>`
+                : `<div class="seg big" role="group" aria-label="จำนวนข้อ">${COUNTS.map((c) => `<button type="button" class="${draft.count === c ? "active" : ""}" data-pc="${c}">${c} ข้อ</button>`).join("")}</div>
+                   ${draft.count > n ? `<p class="pick-note">ระดับนี้มี ${n} คำ จะได้เล่น ${n} ข้อ</p>` : ""}`}
+            </fieldset>
+          </div>
+          <div class="sheet-foot">
+            <p class="summary">${modeTitle(draft.mode)}<br><span>ระดับ ${levelName(draft.level)}, ${speed ? "60 วินาที" : Math.min(draft.count, n) + " ข้อ"}</span></p>
+            <button class="btn big-start" id="goStart">${PLAY.replace(/34/g, "18")} เริ่มฝึก</button>
+          </div>
+        </div>`;
+      dlg.querySelector("#closeSetup").addEventListener("click", () => dlg.close());
+      dlg.querySelectorAll("[data-pl]").forEach((b) => b.addEventListener("click", () => { draft.level = b.dataset.pl; draw(); dlg.querySelector(`[data-pl="${draft.level}"]`).focus(); }));
+      dlg.querySelectorAll("[data-pm]").forEach((b) => b.addEventListener("click", () => { draft.mode = b.dataset.pm; draw(); dlg.querySelector(`[data-pm="${draft.mode}"]`).focus(); }));
+      dlg.querySelectorAll("[data-pc]").forEach((b) => b.addEventListener("click", () => { draft.count = +b.dataset.pc; draw(); dlg.querySelector(`[data-pc="${draft.count}"]`).focus(); }));
+      dlg.querySelector("#goStart").addEventListener("click", () => {
+        data.settings.level = draft.level;
+        data.settings.count = draft.count;
+        persist();
+        dlg.close();
+        startSession(draft.mode);
+      });
+    };
+    draw();
+    document.body.classList.add("sheet-open");
+    if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+    dlg.querySelector("#goStart").focus();
   }
 
   // ---------------- page: progress ----------------

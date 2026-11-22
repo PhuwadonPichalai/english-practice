@@ -924,4 +924,4 @@ html:not([data-theme="dark"]) .xpbar.big { height: 10px; }
 html:not([data-theme="dark"]) .hud .xpbar { width: 64px; height: 8px; }
 html:not([data-theme="dark"]) .hud { border-color: #d3d7de; }
 html:not([data-theme="dark"]) .icon-btn, html:not([data-theme="dark"]) .acct, html:not([data-theme="dark"]) .back { border-color: #d3d7de; }
-html:not([data-theme="dark"]) :is(.card-soft, .learn-card, .profile-hero) { border-top-color: var(--hl); }
+html:not([data-theme="dark"]) :is(.card-soft, .learn-card, .profile-hero) { border-top-color: var(--hl) !important; }

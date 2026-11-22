@@ -4,7 +4,14 @@
 //
 // วิธีได้ค่า: Firebase Console → Project settings → Your apps → Web app → SDK setup and configuration
 // ถ้ายังเป็น null เว็บจะทำงานแบบไม่มีบัญชี (เก็บความคืบหน้าไว้ในเบราว์เซอร์อย่างเดียว)
-window.WU_FIREBASE_CONFIG = null;
+window.WU_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDzjIpWMA5RBmWEhxFRfs-jCQ_oKF0yXrk",
+  authDomain: "wordup-english-8cf45.firebaseapp.com",
+  projectId: "wordup-english-8cf45",
+  storageBucket: "wordup-english-8cf45.firebasestorage.app",
+  messagingSenderId: "692166747891",
+  appId: "1:692166747891:web:2ebaa63efa5a5c35a8b986",
+};
 /* ตัวอย่าง:
 window.WU_FIREBASE_CONFIG = {
   apiKey: "AIza...",

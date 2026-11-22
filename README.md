@@ -46,3 +46,9 @@ npx serve .
 ["word", "n.", "ความหมาย", "An example sentence with the word.", "คำแปลประโยคตัวอย่าง"],
 ```
 ประโยคตัวอย่างต้องมีคำนั้นอยู่ด้วย เพราะโหมดเติมคำใช้ประโยคนี้
+
+## บัญชีผู้ใช้ (Firebase)
+- โปรเจกต์ Firebase: `wordup-english-8cf45` (ล็อกอินด้วย Google หรืออีเมล/รหัสผ่าน)
+- ความคืบหน้าของแต่ละคนเก็บใน Firestore ที่ `users/{uid}` ตามกฎใน `firestore.rules`
+- ค่าใน `firebase-config.js` เป็นค่าสาธารณะของเว็บ ไม่ใช่รหัสลับ
+- ถ้าเปลี่ยนโดเมนเว็บ ต้องเพิ่มโดเมนใหม่ใน Firebase Console → Authentication → Settings → Authorized domains

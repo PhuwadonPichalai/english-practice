@@ -20,7 +20,7 @@
     { id: "blank", icon: "", title: "เติมคำในประโยค", desc: "เลือกคำที่เหมาะกับช่องว่างในประโยค" },
   ];
 
-  const ICONS = {flash: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 6V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"/></svg>`, en2th: `<span><span style="font:700 17px var(--serif)">A</span><span style="font:600 16px var(--sans)">ก</span></span>`, th2en: `<span><span style="font:600 16px var(--sans)">ก</span><span style="font:700 17px var(--serif)">A</span></span>`, spell: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>`, listen: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>`, blank: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12h4M17 12h4"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" stroke="none" opacity=".35"/></svg>`};
+  const ICONS = {flash: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 6V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"/></svg>`, en2th: `<span class="dual"><b>EN</b><i>ไทย</i></span>`, th2en: `<span class="dual"><i>ไทย</i><b>EN</b></span>`, spell: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>`, listen: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>`, blank: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12h4M17 12h4"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" stroke="none" opacity=".35"/></svg>`};
   const COUNTS = [10, 20, 30];
 
   // ---------------- data ----------------
@@ -279,20 +279,40 @@
   document.addEventListener("keydown", (e) => { if (keyHandler) keyHandler(e); });
   document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
 
-  function setNav(view) {
-    document.querySelectorAll(".navlink").forEach((n) => n.classList.toggle("active", n.dataset.go === view));
+  // ---------------- routing ----------------
+  const PAGES = ["home", "practice", "library", "progress"];
+  function currentPage() {
+    const h = location.hash.replace("#", "");
+    return PAGES.includes(h) ? h : "home";
   }
-  function go(view) {
+  function stopSession() {
     keyHandler = null;
     if (S && S.timer) { clearInterval(S.timer); S.timer = null; }
     if (canSpeak) speechSynthesis.cancel();
-    if (view === "library") { location.hash = "library"; renderLibrary(); }
-    else { history.replaceState(null, "", location.pathname + location.search); renderHome(); }
+  }
+  function renderPage() {
+    stopSession();
+    document.body.classList.remove("in-session");
+    document.querySelectorAll(".confetti, .float-xp").forEach((el) => el.remove());
+    const page = currentPage();
+    document.querySelectorAll("[data-go]").forEach((n) => {
+      if (n.classList.contains("navlink") || n.classList.contains("tab")) {
+        n.classList.toggle("active", n.dataset.go === page);
+        if (n.dataset.go === page) n.setAttribute("aria-current", "page"); else n.removeAttribute("aria-current");
+      }
+    });
+    ({ home: renderHome, practice: renderPractice, library: renderLibrary, progress: renderProgress })[page]();
+    renderHUD();
     window.scrollTo(0, 0);
   }
-  window.addEventListener("hashchange", () => { if (location.hash === "#library") renderLibrary(); });
+  function go(view) {
+    if (currentPage() === view && location.hash) renderPage();
+    else location.hash = view;
+  }
+  window.addEventListener("hashchange", renderPage);
+  const setNav = () => {};
 
-  // ---------------- home ----------------
+  // ---------------- shared bits ----------------
   let wotdOffset = 0, homeAnimated = false;
   function wordOfDay() {
     const d = new Date();
@@ -305,33 +325,68 @@
   }
   const CHEV = '<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
   const SPK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>';
+  const CLOCK = '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>';
+  const PLAY = '<svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
+  const levelName = (id) => LEVELS.find((l) => l.id === id).name;
+  const modeTitle = (id) => (id === "speed" ? "ท้าทาย 60 วินาที" : (MODES.find((m) => m.id === id) || MODES[1]).title);
+  const masteredIn = (id) => poolFor(id).filter((x) => status(x.word) === "mastered").length;
+  const levelPct = (id) => Math.round((masteredIn(id) / poolFor(id).length) * 100);
 
-  function renderHome() {
-    setNav("home");
-    const level = data.settings.level;
-    const pool = poolFor(level);
-    const mastered = ALL_WORDS.filter((w) => status(w.word) === "mastered").length;
-    const w = wordOfDay();
-    const anim = homeAnimated ? "" : "hl-anim";
-    homeAnimated = true;
+  function todayPanel() {
     const streak = currentStreak();
     const daily = dailyCount();
     const goalPct = Math.min(1, daily / DAILY_GOAL);
     const li = levelInfo(data.xp || 0);
+    const mastered = ALL_WORDS.filter((w) => status(w.word) === "mastered").length;
+    const C = 2 * Math.PI * 27;
+    return `<section class="today">
+        <div class="goal">
+          <svg class="ring" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+            <circle cx="32" cy="32" r="27" fill="none" style="stroke:var(--paper)" stroke-width="7"/>
+            <circle cx="32" cy="32" r="27" fill="none" style="stroke:var(--ink)" stroke-width="7" stroke-linecap="round"
+              stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - goalPct)}" transform="rotate(-90 32 32)"/>
+          </svg>
+          <div><b>${Math.min(daily, DAILY_GOAL)} / ${DAILY_GOAL}</b><span>${daily >= DAILY_GOAL ? "ครบเป้าวันนี้แล้ว" : "เป้าหมายวันนี้ (ข้อ)"}</span></div>
+        </div>
+        <div class="today-item"><b>Lv ${li.lv}</b><span>${li.into} / ${li.need} XP</span><span class="xpbar big"><span style="width:${(li.into / li.need) * 100}%"></span></span></div>
+        <div class="today-item"><b>${streak} <small>วัน</small></b><span>ฝึกต่อเนื่อง</span></div>
+        <div class="today-item"><b>${mastered} <small>/ ${ALL_WORDS.length}</small></b><span>คำที่จำได้แล้ว</span></div>
+      </section>`;
+  }
+
+  // ---------------- page: home ----------------
+  function renderHome() {
+    const w = wordOfDay();
+    const anim = homeAnimated ? "" : "hl-anim";
+    homeAnimated = true;
+    const streak = currentStreak();
+    const first = (data.totalAnswered || 0) === 0;
+    const lastMode = data.settings.lastMode || "en2th";
+    const level = data.settings.level;
+    const title = first ? "ยินดีต้อนรับสู่ WordUp" : streak > 0 ? `ฝึกต่อเนื่อง ${streak} วันแล้ว` : "กลับมาฝึกต่อกัน";
     const speedBest = data.best[level + ":speed"];
-    const greet = (data.totalAnswered || 0) === 0
-      ? "เริ่มจากคำนี้ก่อนก็ได้ แล้วเลือกระดับกับวิธีฝึกด้านล่าง"
-      : streak > 0 ? `ฝึกต่อเนื่องมา <b>${streak} วัน</b> แล้ว มาต่อกันเลย` : "กลับมาฝึกต่อกันเลย";
-    const levelPct = (id) => {
-      const p = poolFor(id);
-      return Math.round((p.filter((x) => status(x.word) === "mastered").length / p.length) * 100);
-    };
 
     $app.innerHTML = `
-      <section class="wotd">
-        <p class="greet">${greet}</p>
+      <h1 class="page-title">${title}</h1>
+      <p class="page-sub">${first ? "ฝึกคำศัพท์อังกฤษระดับ A1 ถึง C1 วันละนิด เริ่มได้เลยจากปุ่มด้านล่าง" : "ทำให้ครบเป้าวันละ " + DAILY_GOAL + " ข้อ เพื่อรักษาสถิติฝึกต่อเนื่อง"}</p>
+
+      ${todayPanel()}
+
+      <section class="quick">
+        <button class="quick-btn primary" id="continue">
+          <span class="quick-icon">${PLAY}</span>
+          <span><b>${first ? "เริ่มฝึกเลย" : "ฝึกต่อ"}</b><span>${modeTitle(lastMode)} ระดับ ${levelName(level)}, ${data.settings.count} ข้อ</span></span>
+        </button>
+        <button class="quick-btn challenge-btn" id="quickSpeed">
+          <span class="quick-icon">${CLOCK}</span>
+          <span><b>ท้าทาย 60 วินาที</b><span>${speedBest != null ? `สถิติของคุณ ${speedBest} ข้อ` : "ตอบให้ได้มากที่สุดก่อนหมดเวลา"}</span></span>
+        </button>
+        <button class="quick-link" data-go="practice">เลือกระดับหรือวิธีฝึกอื่น ${CHEV}</button>
+      </section>
+
+      <section class="wotd card-soft">
         <div class="tags"><span class="tag">คำประจำวัน</span><span class="tag">${w.level}</span></div>
-        <h1 class="headword">${esc(w.word)}</h1>
+        <h2 class="headword">${esc(w.word)}</h2>
         <div class="entry-line"><span class="pos-i">${esc(w.pos)}</span><span>${esc(w.th)}</span></div>
         <p class="example">${highlight(w.ex, w.word, anim)}</p>
         <div class="entry-actions">
@@ -339,25 +394,25 @@
           <button class="btn ghost" id="nextWord">สุ่มคำอื่น</button>
         </div>
       </section>
+    `;
+    bindSpeak();
+    $app.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
+    $app.querySelector("#continue").addEventListener("click", () => startSession(lastMode));
+    $app.querySelector("#quickSpeed").addEventListener("click", () => startSession("speed"));
+    $app.querySelector("#nextWord").addEventListener("click", () => { wotdOffset += 1; homeAnimated = false; renderHome(); });
+  }
 
-      <section class="today">
-        <div class="goal">
-          <svg class="ring" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
-            <circle cx="32" cy="32" r="27" fill="none" style="stroke:var(--paper)" stroke-width="7"/>
-            <circle cx="32" cy="32" r="27" fill="none" style="stroke:var(--ink)" stroke-width="7" stroke-linecap="round"
-              stroke-dasharray="${2 * Math.PI * 27}" stroke-dashoffset="${2 * Math.PI * 27 * (1 - goalPct)}" transform="rotate(-90 32 32)"/>
-          </svg>
-          <div><b>${Math.min(daily, DAILY_GOAL)} / ${DAILY_GOAL}</b><span>${daily >= DAILY_GOAL ? "ครบเป้าวันนี้แล้ว" : "เป้าหมายวันนี้ (ข้อ)"}</span></div>
-        </div>
-        <div class="today-item"><b>Lv ${li.lv}</b><span>${li.into} / ${li.need} XP</span><span class="xpbar big"><span style="width:${(li.into / li.need) * 100}%"></span></span></div>
-        <div class="today-item"><b>${streak} <small>วัน</small></b><span>ฝึกต่อเนื่อง</span></div>
-        <div class="today-item"><b>${mastered} <small>/ ${ALL_WORDS.length}</small></b><span>คำที่จำได้แล้ว</span></div>
-      </section>
+  // ---------------- page: practice ----------------
+  function renderPractice() {
+    const level = data.settings.level;
+    const pool = poolFor(level);
+    const speedBest = data.best[level + ":speed"];
+    $app.innerHTML = `
+      <h1 class="page-title">ฝึก</h1>
+      <p class="page-sub">เลือกระดับ แล้วกดเลือกวิธีฝึกเพื่อเริ่มเล่น คำที่คุณตอบผิดบ่อยจะถูกสุ่มมาให้ก่อน</p>
 
       <section class="section">
-        <div class="section-head">
-          <div><h2>เลือกระดับ</h2><p>ระดับตามมาตรฐาน CEFR แถบสีในแต่ละขั้นคือสัดส่วนคำที่จำได้แล้ว</p></div>
-        </div>
+        <div class="step-head"><span class="step-no">1</span><div><h2>เลือกระดับ</h2><p>แถบสีในแต่ละขั้นคือสัดส่วนคำที่จำได้แล้ว</p></div></div>
         <div class="ladder">
           ${LEVELS.filter((l) => l.id !== "ALL").map((l) => {
             const pct = levelPct(l.id);
@@ -371,19 +426,21 @@
         </div>
         <div class="ladder-foot">
           <button class="pill ${level === "ALL" ? "active" : ""}" data-level="ALL">รวมทุกระดับ</button>
-          <small>ระดับนี้มี ${pool.length} คำ</small>
+          <small>ระดับ ${levelName(level)} มี ${pool.length} คำ</small>
         </div>
       </section>
 
       <section class="section">
-        <div class="section-head">
-          <div><h2>เลือกวิธีฝึก</h2><p>คำที่ตอบผิดบ่อยจะถูกสุ่มมาให้ก่อน</p></div>
-          <div class="seg" role="group" aria-label="จำนวนข้อต่อรอบ">
-            ${COUNTS.map((c) => `<button class="${c === data.settings.count ? "active" : ""}" data-count="${c}">${c} ข้อ</button>`).join("")}
-          </div>
+        <div class="step-head between">
+          <div class="step-head"><span class="step-no">2</span><div><h2>เลือกวิธีฝึก</h2><p>กดที่โหมดเพื่อเริ่มทันที</p></div></div>
+          <label class="count-pick">จำนวนข้อ
+            <span class="seg" role="group" aria-label="จำนวนข้อต่อรอบ">
+              ${COUNTS.map((c) => `<button class="${c === data.settings.count ? "active" : ""}" data-count="${c}">${c}</button>`).join("")}
+            </span>
+          </label>
         </div>
         <button class="challenge" data-mode="speed">
-          <span class="challenge-clock" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg></span>
+          <span class="challenge-clock" aria-hidden="true">${CLOCK}</span>
           <span class="challenge-text"><b>ท้าทาย 60 วินาที</b><span>ตอบให้ถูกมากที่สุดก่อนหมดเวลา ยิ่งตอบถูกติดกันยิ่งได้ XP เยอะ</span></span>
           <span class="challenge-best">${speedBest != null ? `สถิติ <b>${speedBest}</b> ข้อ` : "ยังไม่มีสถิติ"}</span>
         </button>
@@ -399,24 +456,81 @@
           }).join("")}
         </div>
       </section>
+    `;
+    $app.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("click", () => { data.settings.level = b.dataset.level; persist(); renderPractice(); }));
+    $app.querySelectorAll("[data-count]").forEach((b) => b.addEventListener("click", (e) => { e.preventDefault(); data.settings.count = +b.dataset.count; persist(); renderPractice(); }));
+    $app.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => startSession(b.dataset.mode)));
+  }
+
+  // ---------------- page: progress ----------------
+  function renderProgress() {
+    const li = levelInfo(data.xp || 0);
+    const lvls = LEVELS.filter((l) => l.id !== "ALL");
+    const modes = MODES.map((m) => ({ id: m.id, title: m.title })).concat([{ id: "speed", title: "ท้าทาย 60 วินาที" }]);
+    const have = data.badges || [];
+    $app.innerHTML = `
+      <h1 class="page-title">ความสำเร็จ</h1>
+      <p class="page-sub">ดูพัฒนาการ สถิติ และเหรียญรางวัลของคุณ</p>
+
+      ${todayPanel()}
 
       <section class="section">
-        <div class="section-head"><div><h2>เหรียญรางวัล</h2><p>ได้แล้ว ${(data.badges || []).length} จาก ${BADGES.length} เหรียญ</p></div></div>
-        <div class="badges">${BADGES.map((b) => badgeHTML(b, (data.badges || []).includes(b.id))).join("")}</div>
+        <div class="section-head"><div><h2>ภาพรวม</h2></div></div>
+        <div class="stat-grid">
+          <div><b>${data.xp || 0}</b><span>XP สะสม</span></div>
+          <div><b>${data.totalAnswered || 0}</b><span>ข้อที่ทำทั้งหมด</span></div>
+          <div><b>×${data.bestCombo || 0}</b><span>คอมโบสูงสุด</span></div>
+          <div><b>${have.length} / ${BADGES.length}</b><span>เหรียญรางวัล</span></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><div><h2>ความคืบหน้าแต่ละระดับ</h2><p>จำได้แล้ว กำลังเรียนรู้ และยังไม่เคยฝึก</p></div></div>
+        <div class="level-bars">
+          ${lvls.map((l) => {
+            const p = poolFor(l.id), n = p.length;
+            const m = p.filter((x) => status(x.word) === "mastered").length;
+            const g = p.filter((x) => status(x.word) === "learning").length;
+            return `<div class="lbar">
+              <span class="lbar-name">${l.name}</span>
+              <span class="lbar-track" title="จำได้ ${m}, กำลังเรียนรู้ ${g}, ยังไม่เคยฝึก ${n - m - g}">
+                <span class="seg-m" style="width:${(m / n) * 100}%"></span><span class="seg-l" style="width:${(g / n) * 100}%"></span>
+              </span>
+              <span class="lbar-num">${m}/${n}</span>
+            </div>`;
+          }).join("")}
+          <div class="legend"><span><i class="dot mastered"></i> จำได้แล้ว</span><span><i class="dot learning"></i> กำลังเรียนรู้</span><span><i class="dot"></i> ยังไม่เคยฝึก</span></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><div><h2>คะแนนดีที่สุด</h2><p>เปอร์เซ็นต์ที่ตอบถูกในแต่ละโหมด ส่วนโหมด 60 วินาทีนับเป็นจำนวนข้อ</p></div></div>
+        <div class="scroll">
+          <table class="best-table">
+            <thead><tr><th>โหมด</th>${lvls.map((l) => `<th>${l.name}</th>`).join("")}<th>รวม</th></tr></thead>
+            <tbody>
+              ${modes.map((m) => `<tr><td>${m.title}</td>${lvls.concat([{ id: "ALL" }]).map((l) => {
+                const v = data.best[l.id + ":" + m.id];
+                return `<td class="${v == null ? "na" : ""}">${v == null ? "–" : m.id === "speed" ? v : v + "%"}</td>`;
+              }).join("")}</tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><div><h2>เหรียญรางวัล</h2><p>ได้แล้ว ${have.length} จาก ${BADGES.length} เหรียญ</p></div></div>
+        <div class="badges">${BADGES.map((b) => badgeHTML(b, have.includes(b.id))).join("")}</div>
       </section>
     `;
-
-    renderHUD();
-    bindSpeak();
-    $app.querySelector("#nextWord").addEventListener("click", () => { wotdOffset += 1; homeAnimated = false; renderHome(); });
-    $app.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("click", () => { data.settings.level = b.dataset.level; persist(); renderHome(); }));
-    $app.querySelectorAll("[data-count]").forEach((b) => b.addEventListener("click", () => { data.settings.count = +b.dataset.count; persist(); renderHome(); }));
-    $app.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => startSession(b.dataset.mode)));
   }
 
   // ---------------- session ----------------
 
   function startSession(mode) {
+    stopSession();
+    document.body.classList.add("in-session");
+    if (mode !== "speed") { data.settings.lastMode = mode; persist(); }
     const level = data.settings.level;
     const speed = mode === "speed";
     const words = speed ? shuffle(poolFor(level)) : pickWords(level, data.settings.count);
@@ -452,7 +566,7 @@
   }
 
   function bindQuit() {
-    $app.querySelector("#quit").addEventListener("click", () => go("home"));
+    $app.querySelector("#quit").addEventListener("click", () => renderPage());
   }
 
   function renderQuestion() {
@@ -687,6 +801,7 @@
   // ---------------- result ----------------
   function renderResult() {
     keyHandler = null;
+    document.body.classList.remove("in-session");
     if (S.timer) { clearInterval(S.timer); S.timer = null; }
     bumpStreak();
     const speed = S.mode === "speed";
@@ -722,7 +837,7 @@
         <div class="result-actions">
           <button class="btn" id="again">เล่นอีกรอบ</button>
           ${S.wrong.length && !speed ? `<button class="btn ghost" id="retryWrong">ฝึกเฉพาะคำที่ผิด (${S.wrong.length})</button>` : ""}
-          <button class="btn ghost" id="home">กลับหน้าแรก</button>
+          <button class="btn ghost" id="home">เลือกโหมดอื่น</button>
         </div>
         ${S.wrong.length ? `
           <div class="review">
@@ -735,7 +850,7 @@
     `;
     if (great || S.levelUp || newBadges.length) { confetti(); sfx.win(); }
     $app.querySelector("#again").addEventListener("click", () => startSession(S.mode));
-    $app.querySelector("#home").addEventListener("click", () => go("home"));
+    $app.querySelector("#home").addEventListener("click", () => go("practice"));
     const rw = $app.querySelector("#retryWrong");
     if (rw) rw.addEventListener("click", () => {
       S = { mode: S.mode, level: S.level, words: shuffle(S.wrong), i: 0, correct: 0, wrong: [], answered: false, combo: 0, maxCombo: 0, xp: 0, levelUp: 0, answeredN: 0 };
@@ -800,5 +915,5 @@
 
   // ---------------- boot ----------------
   renderHUD();
-  if (location.hash === "#library") renderLibrary(); else renderHome();
+  renderPage();
 })();

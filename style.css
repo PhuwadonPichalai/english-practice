@@ -1194,3 +1194,14 @@ html:not([data-theme="dark"]) .u-bar { background: #e3e6eb; }
 /* perk icons: `.perks span` (muted) was overriding the icon colour */
 .perks .perk-ic { color: var(--ac-ink); }
 .perks .perk-ic svg { stroke-width: 2.2; }
+
+/* voice picker */
+.voice-ctl { display: flex; gap: 8px; align-items: center; }
+.voice-sel { max-width: 240px; min-height: 42px; }
+.voice-try { min-height: 42px; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
+@media (max-width: 700px) {
+  .voice-row { grid-template-columns: 40px minmax(0, 1fr); }
+  .voice-row .set-ctl { grid-column: 1 / -1; }
+  .voice-ctl { width: 100%; }
+  .voice-sel { flex: 1; max-width: none; }
+}

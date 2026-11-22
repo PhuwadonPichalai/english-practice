@@ -273,20 +273,66 @@
   }
 
   // ---------------- speech ----------------
+  // เสียงที่มีให้เลือกขึ้นอยู่กับเครื่องและเบราว์เซอร์ จึงเก็บค่าที่เลือกไว้ในเครื่องนี้ ไม่ sync ข้ามเครื่อง
+  const VOICE_KEY = "wu-voice";
+  const ACCENTS = [["US", "สำเนียงอเมริกัน"], ["GB", "สำเนียงอังกฤษ"], ["AU", "สำเนียงออสเตรเลีย"], ["CA", "สำเนียงแคนาดา"], ["IE", "สำเนียงไอร์แลนด์"], ["NZ", "สำเนียงนิวซีแลนด์"], ["IN", "สำเนียงอินเดีย"], ["ZA", "สำเนียงแอฟริกาใต้"]];
+  const accentOf = (v) => { const m = /^en[-_]([a-z]{2})/i.exec(v.lang); return m ? m[1].toUpperCase() : ""; };
+  function englishVoices() {
+    if (!("speechSynthesis" in window)) return [];
+    const order = ACCENTS.map((a) => a[0]);
+    const rank = (v) => { const i = order.indexOf(accentOf(v)); return i < 0 ? 99 : i; };
+    return speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang))
+      .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  }
+  const voiceLabel = (v) => v.name.replace(/^(Microsoft|Google)\s+/i, "").replace(/\s*[-–]\s*English.*$/i, "").replace(/\s*\(.*?\)\s*$/, (m) => (/natural/i.test(m) ? " (เสียงธรรมชาติ)" : "")).replace(/\s+Online\b/i, "").trim() || v.name;
   let voice = null;
   function pickVoice() {
     if (!("speechSynthesis" in window)) return;
-    const vs = speechSynthesis.getVoices();
-    voice = vs.find((v) => /en-US/i.test(v.lang) && /Google|Samantha|Microsoft/i.test(v.name)) || vs.find((v) => /^en/i.test(v.lang)) || null;
+    const vs = englishVoices();
+    let want = null; try { want = localStorage.getItem(VOICE_KEY); } catch (e) {}
+    voice = (want && vs.find((v) => v.voiceURI === want)) ||
+      vs.find((v) => /en-US/i.test(v.lang) && /Google|Samantha|Microsoft/i.test(v.name)) || vs[0] || null;
   }
-  if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+  if ("speechSynthesis" in window) {
+    pickVoice();
+    speechSynthesis.onvoiceschanged = () => {
+      pickVoice();
+      // รายชื่อเสียงมักโหลดมาทีหลัง ถ้าเปิดหน้าบัญชีอยู่ให้อัปเดตตัวเลือก
+      const sel = document.getElementById("voiceSel");
+      if (sel && !sel.matches(":focus")) sel.outerHTML = voiceSelectHTML();
+      bindVoiceSelect();
+    };
+  }
+  function voiceSelectHTML() {
+    const vs = englishVoices();
+    let want = ""; try { want = localStorage.getItem(VOICE_KEY) || ""; } catch (e) {}
+    if (want && !vs.some((v) => v.voiceURI === want)) want = "";
+    if (!vs.length) return `<select class="filter voice-sel" id="voiceSel" disabled><option>ไม่พบเสียงภาษาอังกฤษในเครื่องนี้</option></select>`;
+    const groups = {};
+    vs.forEach((v) => { const k = accentOf(v); (groups[k] = groups[k] || []).push(v); });
+    const label = (k) => (ACCENTS.find((a) => a[0] === k) || [k, "สำเนียงอื่นๆ"])[1];
+    return `<select class="filter voice-sel" id="voiceSel" aria-label="เสียงผู้พูด">
+      <option value="" ${!want ? "selected" : ""}>อัตโนมัติ (${esc(voice ? voiceLabel(voice) : "ค่าเริ่มต้น")})</option>
+      ${Object.keys(groups).map((k) => `<optgroup label="${esc(label(k))}">${groups[k].map((v) => `<option value="${esc(v.voiceURI)}" ${want === v.voiceURI ? "selected" : ""}>${esc(voiceLabel(v))}</option>`).join("")}</optgroup>`).join("")}
+    </select>`;
+  }
+  function bindVoiceSelect() {
+    const sel = document.getElementById("voiceSel");
+    if (!sel || sel._bound) return;
+    sel._bound = true;
+    sel.addEventListener("change", () => {
+      try { if (sel.value) localStorage.setItem(VOICE_KEY, sel.value); else localStorage.removeItem(VOICE_KEY); } catch (e) {}
+      pickVoice();
+      speak("Hello! This is how I sound.");
+    });
+  }
   function speak(text, rate) {
     if (rate == null) rate = (data.settings && data.settings.voiceRate) || 0.9;
     if (!("speechSynthesis" in window)) return false;
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US"; u.rate = rate;
-    if (voice) u.voice = voice;
+    u.lang = voice ? voice.lang : "en-US"; u.rate = rate;
+    if (voice) { try { u.voice = voice; } catch (e) {} }
     speechSynthesis.speak(u);
     return true;
   }
@@ -1566,6 +1612,8 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
 
   // ---------------- page: account ----------------
   const IC = {
+    speaker: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M18 6a4 4 0 0 1 0 6M20.5 3.5a7.5 7.5 0 0 1 0 11"/></svg>',
+    play: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>',
     timer: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>',
     sound: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
     voice: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg>',
@@ -1650,6 +1698,8 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
           segCtl("นับถอยหลัง", [[0, "ปิด"], [2, "2 วิ"], [3, "3 วิ"], [5, "5 วิ"]], autoNext, "data-auto"))}
         ${settingRow(IC.sound, "เสียงเอฟเฟกต์", "เสียงตอนตอบถูก ตอบผิด และเลเวลอัป",
           segCtl("เสียงเอฟเฟกต์", [[1, "เปิด"], [0, "ปิด"]], data.sound ? 1 : 0, "data-snd"))}
+        ${canSpeak ? settingRow(IC.speaker, "เสียงผู้พูด", "เลือกเสียงและสำเนียงที่ใช้อ่านคำศัพท์ เสียงที่มีให้เลือกขึ้นอยู่กับเครื่องและเบราว์เซอร์ จึงตั้งแยกกันในแต่ละเครื่อง",
+          `<div class="voice-ctl">${voiceSelectHTML()}<button class="btn ghost voice-try" id="voiceTry" type="button" aria-label="ลองฟังเสียง">${IC.play} ลองฟัง</button></div>`, "voice-row") : ""}
         ${settingRow(IC.voice, "ความเร็วเสียงอ่าน", "ความเร็วตอนอ่านออกเสียงคำศัพท์และประโยค",
           segCtl("ความเร็วเสียงอ่าน", [[0.7, "ช้า"], [0.9, "ปกติ"], [1.1, "เร็ว"]], data.settings.voiceRate ?? 0.9, "data-rate"))}
       </section>
@@ -1670,6 +1720,8 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     $app.querySelectorAll("[data-rate]").forEach((b) => b.addEventListener("click", () => { data.settings.voiceRate = +b.dataset.rate; persist(); renderAccount(); speak("Hello, this is the reading speed."); }));
     $app.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => { smoothTheme(() => { applyTheme(b.dataset.themeSet); renderAccount(); }, b); }));
     const on = (id, fn) => { const el = $app.querySelector(id); if (el) el.addEventListener("click", fn); };
+    bindVoiceSelect();
+    on("#voiceTry", () => speak("Hello! This is how I sound."));
     on("#signOut", async () => { try { localStorage.removeItem(GUEST_OK); } catch (e) {} await C.signOut(); toast("ออกจากระบบแล้ว"); });
     on("#syncNow", () => cloudSaveNow());
     bindAuth(C, renderAccount);

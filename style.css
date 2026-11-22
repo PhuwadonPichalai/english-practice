@@ -854,7 +854,7 @@ html:not([data-theme="dark"]) .word-item[open] > summary,
 html:not([data-theme="dark"]) .word-more { background: #f8f9fb; }
 
 /* hover lifts */
-html:not([data-theme="dark"]) :is(.quick-btn, .study-btn:not(:disabled), .challenge) { transition: transform .15s, box-shadow .15s, border-color .15s; }
+html:not([data-theme="dark"]) :is(.quick-btn, .study-btn:not(:disabled), .challenge) { transition: transform .35s var(--ease-out), box-shadow .35s var(--ease-out), border-color .25s var(--ease-out); }
 html:not([data-theme="dark"]) :is(.quick-btn, .study-btn:not(:disabled)):hover { box-shadow: var(--sh-2); border-color: #d5d8de; }
 
 /* the two loud buttons keep their colour */
@@ -975,7 +975,7 @@ html:not([data-theme="dark"]) :is(.card-soft, .learn-card, .profile-hero) { bord
 [data-theme="dark"] .word-item[open] > summary, [data-theme="dark"] .word-more { background: #1c1e22; }
 [data-theme="dark"] .badge:not(.on) { background: rgba(23, 24, 27, .5); }
 
-[data-theme="dark"] :is(.quick-btn, .study-btn:not(:disabled)) { transition: transform .15s, box-shadow .15s, border-color .15s; }
+[data-theme="dark"] :is(.quick-btn, .study-btn:not(:disabled)) { transition: transform .35s var(--ease-out), box-shadow .35s var(--ease-out), border-color .25s var(--ease-out); }
 [data-theme="dark"] :is(.quick-btn, .study-btn:not(:disabled)):hover { box-shadow: var(--sh-2); border-color: #454952; }
 [data-theme="dark"] .quick-btn.primary {
   background: linear-gradient(180deg, #f4f2ec, #dcd9d1); border-color: #dcd9d1; color: #141517;
@@ -1015,3 +1015,85 @@ html:not([data-theme="dark"]) :is(.card-soft, .learn-card, .profile-hero) { bord
 }
 [data-theme="dark"] .xpbar.big { height: 10px; }
 [data-theme="dark"] .hud .xpbar { width: 64px; height: 8px; }
+
+/* ================= motion system =================
+   One set of curves for the whole site so every movement feels related. */
+:root {
+  --ease-out: cubic-bezier(.22, 1, .36, 1);      /* settles softly */
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1); /* small overshoot */
+}
+
+/* theme change: circular reveal (View Transitions) */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { z-index: 2; }
+::view-transition-old(root) { z-index: 1; }
+/* theme change fallback: fade every colour at once */
+html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
+  transition: background-color .45s var(--ease-in-out), color .45s var(--ease-in-out), border-color .45s var(--ease-in-out),
+    box-shadow .45s var(--ease-in-out), fill .45s var(--ease-in-out), stroke .45s var(--ease-in-out) !important;
+}
+
+/* every interactive element eases its state changes */
+:where(button, .btn, a, summary, .field, .search, .filter, .text-input, .option, .opt, .pill, .seg button, .navlink, .tab) {
+  transition: background-color .22s var(--ease-out), color .22s var(--ease-out), border-color .22s var(--ease-out),
+    box-shadow .3s var(--ease-out), transform .3s var(--ease-out), opacity .22s var(--ease-out);
+}
+.btn:active:not(:disabled), .option:active:not(:disabled), .pill:active, .opt:active, .icon-btn:active, .back:active { transform: scale(.97); transition-duration: .08s; }
+.quick-btn, .study-btn, .challenge, .step, .mode-row, .glyph, .chev {
+  transition: transform .35s var(--ease-out), box-shadow .35s var(--ease-out), border-color .25s var(--ease-out), background-color .25s var(--ease-out);
+}
+.glyph { transition: transform .4s var(--ease-spring), background-color .25s var(--ease-out); }
+.quick-btn:active, .study-btn:active:not(:disabled) { transform: translateY(1px) scale(.99); transition-duration: .1s; }
+
+/* page / screen entrance */
+#app.enter > * { animation: enterUp .5s var(--ease-out) both; }
+#app.enter > *:nth-child(2) { animation-delay: .04s; }
+#app.enter > *:nth-child(3) { animation-delay: .08s; }
+#app.enter > *:nth-child(4) { animation-delay: .12s; }
+#app.enter > *:nth-child(n+5) { animation-delay: .16s; }
+@keyframes enterUp { from { opacity: 0; transform: translateY(10px); } }
+body.in-session #app.enter > * { animation-duration: .38s; animation-delay: 0s; }
+
+/* bars and rings glide */
+.progress > span, .xpbar > span { transition: width .6s var(--ease-out); }
+.session-head.speed .progress > span { transition: width .1s linear; }
+.ring circle:last-child { transition: stroke-dashoffset 1s var(--ease-out); }
+
+/* answer feedback: softer pop, decaying shake */
+@keyframes pop { 0% { transform: scale(1); } 35% { transform: scale(1.035); } 100% { transform: scale(1); } }
+.card.pop, .flash.pop, .option.correct { animation: pop .45s var(--ease-spring); }
+@keyframes shake { 0%, 100% { transform: translateX(0); } 15% { transform: translateX(-9px); } 35% { transform: translateX(7px); } 55% { transform: translateX(-4px); } 75% { transform: translateX(2px); } }
+.card.shake, .flash.shake { animation: shake .5s var(--ease-out); }
+.feedback.show { animation: fbIn .4s var(--ease-out) both; }
+@keyframes fbIn { from { opacity: 0; transform: translateY(-6px); } }
+.flash-inner { transition: transform .6s cubic-bezier(.45, .05, .2, 1); }
+.option.wrong { animation: shake .45s var(--ease-out); }
+
+/* setup sheet: in and out */
+.sheet[open] { animation: sheetIn .38s var(--ease-out); }
+@keyframes sheetIn { from { opacity: 0; transform: translateY(28px) scale(.98); } }
+.sheet[open]::backdrop { animation: fadeIn .3s var(--ease-out); }
+.sheet.closing { animation: sheetOut .2s var(--ease-in-out) forwards; }
+.sheet.closing::backdrop { animation: fadeOut .2s var(--ease-in-out) forwards; }
+@keyframes sheetOut { to { opacity: 0; transform: translateY(20px) scale(.98); } }
+@keyframes fadeIn { from { opacity: 0; } }
+@keyframes fadeOut { to { opacity: 0; } }
+@media (max-width: 600px) {
+  .sheet[open] { animation: sheetUp .42s var(--ease-out); }
+  @keyframes sheetUp { from { transform: translateY(100%); } }
+  .sheet.closing { animation: sheetDown .22s var(--ease-in-out) forwards; }
+  @keyframes sheetDown { to { transform: translateY(100%); } }
+}
+
+/* toast */
+.toast { animation: toastIn .35s var(--ease-out); }
+.toast.out { transition: opacity .35s var(--ease-in-out), transform .35s var(--ease-in-out); transform: translate(-50%, 8px); }
+
+/* library rows open smoothly */
+.word-item[open] .word-more { animation: enterUp .3s var(--ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  #app.enter > *, .sheet[open], .sheet.closing, .sheet[open]::backdrop, .feedback.show, .word-item[open] .word-more, .option.wrong { animation: none !important; }
+  .flash-inner { transition: none; }
+}

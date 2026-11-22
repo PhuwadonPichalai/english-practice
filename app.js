@@ -208,6 +208,13 @@
 
   // ---------------- helpers ----------------
   const $app = document.getElementById("app");
+  // เล่นอนิเมชั่นเข้าหน้าเบาๆ ทุกครั้งที่เนื้อหาใน #app ถูกแทนที่ทั้งหน้า
+  new MutationObserver((muts) => {
+    if (!muts.some((m) => m.target === $app && m.addedNodes.length && m.removedNodes.length)) return;
+    $app.classList.remove("enter"); void $app.offsetWidth; $app.classList.add("enter");
+    clearTimeout($app._enterT);
+    $app._enterT = setTimeout(() => $app.classList.remove("enter"), 700);
+  }).observe($app, { childList: true });
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const poolFor = (level) => (level === "ALL" ? ALL_WORDS : ALL_WORDS.filter((w) => w.level === level));
@@ -471,11 +478,40 @@
   });
 
   // ---------------- theme ----------------
-  document.getElementById("themeToggle").addEventListener("click", () => {
+  // ----- เปลี่ยนธีมแบบนุ่มนวล: วงกลมขยายออกจากปุ่มที่กด (ถ้าเบราว์เซอร์รองรับ) ไม่งั้นค่อยๆ เฟดสี -----
+  const motionOK = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function smoothTheme(change, fromEl) {
+    const root = document.documentElement;
+    const before = root.dataset.theme;
+    if (!motionOK()) { change(); return; }
+    if (document.startViewTransition) {
+      const r = fromEl ? fromEl.getBoundingClientRect() : { left: innerWidth / 2, top: 0, width: 0, height: 0 };
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const rad = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+      root.classList.add("vt-theme");
+      const t = document.startViewTransition(() => { change(); });
+      t.ready.then(() => {
+        if (root.dataset.theme === before) return;
+        root.animate(
+          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${rad}px at ${x}px ${y}px)`] },
+          { duration: 650, easing: "cubic-bezier(.65,0,.35,1)", pseudoElement: "::view-transition-new(root)" }
+        );
+      }).catch(() => {});
+      t.finished.finally(() => root.classList.remove("vt-theme"));
+      return;
+    }
+    root.classList.add("theme-fade");
+    change();
+    clearTimeout(smoothTheme.t);
+    smoothTheme.t = setTimeout(() => root.classList.remove("theme-fade"), 500);
+  }
+  document.getElementById("themeToggle").addEventListener("click", (e) => {
     sfx.toggle();
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
-    try { localStorage.setItem("wu-theme", next); } catch (e) {}
+    smoothTheme(() => {
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem("wu-theme", next); } catch (e) {}
+    }, e.currentTarget);
   });
 
   // ---------------- navigation ----------------
@@ -686,6 +722,14 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
   // ---------------- setup sheet (choose level, mode, count) ----------------
   const ALL_MODES = () => [{ id: "learn", title: "เรียนคำใหม่" }, { id: "speed", title: "ท้าทาย 60 วินาที", desc: "แข่งกับเวลา" }].concat(MODES);
   const LEARN_COUNTS = [5, 10, 15];
+  // ปิดหน้าต่างตั้งค่าแบบมีอนิเมชั่นเลื่อนลง (fast = ปิดเร็วตอนกดเริ่มเล่น)
+  function closeSheet(fast) {
+    const dlg = document.getElementById("setup");
+    if (!dlg || !dlg.open || dlg.classList.contains("closing")) return;
+    if (fast || !motionOK()) { dlg.close(); return; }
+    dlg.classList.add("closing");
+    setTimeout(() => { dlg.classList.remove("closing"); dlg.close(); }, 200);
+  }
   function openSetup(preset = {}) {
     const draft = {
       level: data.settings.level,
@@ -700,7 +744,8 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       dlg.className = "sheet";
       dlg.setAttribute("aria-labelledby", "setupTitle");
       document.body.appendChild(dlg);
-      dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+      dlg.addEventListener("click", (e) => { if (e.target === dlg) closeSheet(); });
+      dlg.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(); });
       dlg.addEventListener("close", () => { document.body.classList.remove("sheet-open"); if (!dlg._starting) sfx.close(); dlg._starting = false; });
     }
     const draw = () => {
@@ -756,7 +801,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
           </div>
         </div>`;
       dlg.querySelector(".sheet-body").scrollTop = keepScroll;
-      dlg.querySelector("#closeSetup").addEventListener("click", () => dlg.close());
+      dlg.querySelector("#closeSetup").addEventListener("click", () => closeSheet());
       dlg.querySelectorAll("[data-pl]").forEach((b) => b.addEventListener("click", () => { draft.level = b.dataset.pl; draw(); dlg.querySelector(`[data-pl="${draft.level}"]`).focus({ preventScroll: true }); }));
       dlg.querySelectorAll("[data-pm]").forEach((b) => b.addEventListener("click", () => { draft.mode = b.dataset.pm; draw(); dlg.querySelector(`[data-pm="${draft.mode}"]`).focus({ preventScroll: true }); }));
       dlg.querySelectorAll("[data-plc]").forEach((b) => b.addEventListener("click", () => { draft.learnCount = +b.dataset.plc; draw(); dlg.querySelector(`[data-plc="${draft.learnCount}"]`).focus({ preventScroll: true }); }));
@@ -767,7 +812,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
         data.settings.learnCount = draft.learnCount;
         persist();
         dlg._starting = true;
-        dlg.close();
+        closeSheet(true);
         startSession(draft.mode);
       });
     };
@@ -1510,7 +1555,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     $app.querySelectorAll("[data-auto]").forEach((b) => b.addEventListener("click", () => { data.settings.autoNext = +b.dataset.auto; persist(); renderAccount(); }));
     $app.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => { data.sound = b.dataset.snd === "1"; persist(); renderHUD(); renderAccount(); if (data.sound) sfx.toggle(); }));
     $app.querySelectorAll("[data-rate]").forEach((b) => b.addEventListener("click", () => { data.settings.voiceRate = +b.dataset.rate; persist(); renderAccount(); speak("Hello, this is the reading speed."); }));
-    $app.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => { applyTheme(b.dataset.themeSet); renderAccount(); }));
+    $app.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => { smoothTheme(() => { applyTheme(b.dataset.themeSet); renderAccount(); }, b); }));
     const on = (id, fn) => { const el = $app.querySelector(id); if (el) el.addEventListener("click", fn); };
     on("#signOut", async () => { await C.signOut(); toast("ออกจากระบบแล้ว"); });
     on("#syncNow", () => cloudSaveNow());
@@ -1618,7 +1663,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     $app.querySelector("#f").addEventListener("change", (e) => { libFilter = e.target.value; draw(); });
   }
 
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (themePref() === "system") applyTheme("system"); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (themePref() === "system") smoothTheme(() => applyTheme("system")); });
 
   // ---------------- boot ----------------
   updateAccountButton();

@@ -438,7 +438,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     return `<section class="today">
         <div class="goal">
           <svg class="ring" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
-            <circle cx="32" cy="32" r="27" fill="none" style="stroke:var(--paper)" stroke-width="7"/>
+            <circle cx="32" cy="32" r="27" fill="none" style="stroke:var(--ring-track, var(--paper))" stroke-width="7"/>
             <circle cx="32" cy="32" r="27" fill="none" style="stroke:var(--ink)" stroke-width="7" stroke-linecap="round"
               stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - goalPct)}" transform="rotate(-90 32 32)"/>
           </svg>

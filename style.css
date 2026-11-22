@@ -36,7 +36,7 @@
 * { box-sizing: border-box; min-width: 0; }
 html, body { margin: 0; }
 body {
-  background: var(--paper);
+  background: var(--bg, var(--paper));
   color: var(--ink);
   font: 16px/1.6 var(--sans);
   min-height: 100vh;
@@ -794,3 +794,109 @@ body.sheet-open { overflow: hidden; }
 .show-pass { display: flex !important; align-items: center; gap: 8px; font-weight: 400 !important; color: var(--muted); cursor: pointer; }
 .show-pass input { width: 18px; height: 18px; accent-color: var(--ink); margin: 0; }
 .field.invalid { border-color: var(--bad); }
+
+/* ================= light theme: sheets on a desk =================
+   The page is a pale grey desk; every working surface is a white sheet
+   lifted with a soft two-layer shadow. Ink + highlighter stay the identity. */
+html:not([data-theme="dark"]) {
+  --bg: #f3f4f6;
+  --paper: #ffffff;
+  --soft: #f2f3f5;
+  --line: #e3e5e9;
+  --ink: #1c1e22;
+  --muted: #646972;
+  --ring-track: #eef0f3;
+  --sh-1: 0 1px 2px rgba(17, 24, 39, .05), 0 1px 3px rgba(17, 24, 39, .04);
+  --sh-2: 0 2px 4px rgba(17, 24, 39, .04), 0 10px 28px -6px rgba(17, 24, 39, .10);
+  --g-flash: #fff3bf; --g-en2th: #e1edff; --g-th2en: #ddf3e5;
+  --g-spell: #efe5ff; --g-listen: #ffe4e7; --g-blank: #daf2ee;
+}
+html:not([data-theme="dark"]) body {
+  background:
+    radial-gradient(1200px 420px at 50% -120px, #ffffff 0%, rgba(255,255,255,0) 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* chrome */
+html:not([data-theme="dark"]) .topbar {
+  background: rgba(255, 255, 255, .86);
+  border-bottom-color: transparent;
+  box-shadow: 0 1px 0 var(--line), 0 6px 20px -14px rgba(17, 24, 39, .25);
+}
+html:not([data-theme="dark"]) .navlink.active { background: var(--ink); color: #fff; }
+html:not([data-theme="dark"]) .icon-btn,
+html:not([data-theme="dark"]) .hud,
+html:not([data-theme="dark"]) .acct,
+html:not([data-theme="dark"]) .back { background: #fff; box-shadow: var(--sh-1); }
+html:not([data-theme="dark"]) .tabbar { background: rgba(255, 255, 255, .94); box-shadow: 0 -8px 24px -16px rgba(17, 24, 39, .25); }
+html:not([data-theme="dark"]) footer { background: transparent; }
+
+/* sheets */
+html:not([data-theme="dark"]) :is(.goal, .today-item, .study-btn, .quick-btn, .card, .card-soft, .learn-card,
+  .set-group, .auth-box, .auth-pitch, .profile-hero, .step, .badge, .flash-front, .flash-back, .opt) {
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: var(--sh-1);
+}
+html:not([data-theme="dark"]) :is(.mode-list, .word-list) {
+  background: #fff; border: 1px solid var(--line); border-radius: 20px;
+  box-shadow: var(--sh-1); overflow: hidden;
+}
+html:not([data-theme="dark"]) .mode-row { padding: 16px 18px; }
+html:not([data-theme="dark"]) .mode-row:last-child,
+html:not([data-theme="dark"]) .word-list > :last-child,
+html:not([data-theme="dark"]) .word-list > :last-child > summary { border-bottom: 0; }
+html:not([data-theme="dark"]) .word-row { padding: 12px 18px; }
+html:not([data-theme="dark"]) .mode-row:hover { background: #fafbfc; }
+html:not([data-theme="dark"]) .mode-row:hover .glyph { background: inherit; }
+html:not([data-theme="dark"]) .word-item[open] > summary,
+html:not([data-theme="dark"]) .word-more { background: #f8f9fb; }
+
+/* hover lifts */
+html:not([data-theme="dark"]) :is(.quick-btn, .study-btn:not(:disabled), .challenge) { transition: transform .15s, box-shadow .15s, border-color .15s; }
+html:not([data-theme="dark"]) :is(.quick-btn, .study-btn:not(:disabled)):hover { box-shadow: var(--sh-2); border-color: #d5d8de; }
+
+/* the two loud buttons keep their colour */
+html:not([data-theme="dark"]) .quick-btn.primary {
+  background: linear-gradient(180deg, #2a2d33, #17191c); border-color: #17191c; color: #fff;
+  box-shadow: 0 1px 0 rgba(255,255,255,.08) inset, 0 8px 22px -8px rgba(17, 24, 39, .55);
+}
+html:not([data-theme="dark"]) .quick-btn.challenge-btn {
+  background: var(--hl); border-color: #f0cf2e;
+  box-shadow: 0 8px 22px -10px rgba(214, 170, 0, .65);
+}
+html:not([data-theme="dark"]) .study-btn.review.has-due { border: 2px solid var(--ink); }
+
+/* today strip: the goal sheet carries a highlighter edge */
+html:not([data-theme="dark"]) .goal { border-color: var(--line); position: relative; overflow: hidden; }
+html:not([data-theme="dark"]) .goal::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--hl); }
+
+/* word of the day: a white index card with a highlighter tab */
+html:not([data-theme="dark"]) .card-soft {
+  position: relative; overflow: hidden;
+  background: radial-gradient(420px 220px at 100% 0%, #fff8d1 0%, rgba(255,248,209,0) 70%), #fff;
+  border-top: 6px solid var(--hl);
+}
+html:not([data-theme="dark"]) .card-soft .btn.ghost,
+html:not([data-theme="dark"]) .learn-card .btn.ghost { background: #fff; border-color: var(--line); box-shadow: var(--sh-1); }
+html:not([data-theme="dark"]) .learn-card { border-top: 6px solid var(--hl); }
+
+/* inner tiles that used to sit on grey */
+html:not([data-theme="dark"]) .profile-hero { border-top: 6px solid var(--hl); }
+html:not([data-theme="dark"]) :is(.ph-stats > div, .sync-pill) { background: var(--soft); }
+html:not([data-theme="dark"]) .ph-actions .btn { background: #fff; }
+html:not([data-theme="dark"]) .ph-level .xpbar.big { background: var(--soft); }
+html:not([data-theme="dark"]) .auth-pitch { background: linear-gradient(160deg, #fffbe3 0%, #fff 55%); }
+
+/* form controls read as wells */
+html:not([data-theme="dark"]) :is(.field, .search, .filter) { background: #fff; box-shadow: inset 0 1px 2px rgba(17, 24, 39, .05); }
+html:not([data-theme="dark"]) :is(.field, .search):focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(255, 228, 92, .55); }
+html:not([data-theme="dark"]) .btn.ghost { background: #fff; }
+html:not([data-theme="dark"]) .pill { box-shadow: var(--sh-1); }
+html:not([data-theme="dark"]) .opt.on { background: #fffbe6; box-shadow: 0 0 0 3px rgba(255, 228, 92, .45); }
+html:not([data-theme="dark"]) .badge:not(.on) { border-style: dashed; box-shadow: none; background: rgba(255,255,255,.55); }
+
+/* setup sheet header/footer stay crisp over the dialog */
+html:not([data-theme="dark"]) .sheet { box-shadow: 0 30px 90px -20px rgba(17, 24, 39, .45); }
+html:not([data-theme="dark"]) .progress { background: #e4e7ec; }

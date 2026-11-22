@@ -531,9 +531,52 @@
     if (S && S.timer) { clearInterval(S.timer); S.timer = null; }
     if (canSpeak) speechSynthesis.cancel();
   }
+  // ----- หน้าแรกสุด: เข้าสู่ระบบ หรือ ลองใช้ก่อน -----
+  const GUEST_OK = "wu-guest-ok";
+  function needGate() {
+    const C = window.WUCloud;
+    if (!cloudOn() || (C && C.loadError)) return false;
+    if (C && C.user) return false;
+    try { if (localStorage.getItem(GUEST_OK)) return false; } catch (e) { return false; }
+    // เคยล็อกอินไว้และยังรอยืนยันตัวตนอยู่: ไม่ต้องโชว์หน้าล็อกอินให้กระพริบ
+    if ((!C || !C.ready) && storeKey !== GUEST_KEY) return false;
+    return true;
+  }
+  function renderWelcome() {
+    const C = window.WUCloud || { enabled: false };
+    document.body.classList.add("gated");
+    $app.innerHTML = `
+      <section class="welcome">
+        <div class="welcome-intro">
+          <h1>ฝึกศัพท์อังกฤษ<br>วันละนิด จำได้นาน</h1>
+          <p>เรียนคำใหม่ ทบทวนตามรอบที่ช่วยให้จำ และเล่นเกมฝึกศัพท์ 500 คำ ตั้งแต่ระดับ A1 ถึง C1</p>
+          <p class="welcome-sample">I want to <mark class="hl hl-anim">improve</mark> my English.</p>
+          <ul class="perks">
+            <li><span class="perk-ic">${IC.devices}</span><div><b>เล่นต่อได้ทุกเครื่อง</b><span>เริ่มบนมือถือ แล้วไปต่อบนคอมได้ทันที</span></div></li>
+            <li><span class="perk-ic">${IC.cloud}</span><div><b>ความคืบหน้าไม่หาย</b><span>เก็บไว้ในบัญชี เปลี่ยนเครื่องก็ยังอยู่ครบ</span></div></li>
+          </ul>
+        </div>
+        <div class="welcome-side">
+          <div class="auth-box">${authFormHTML(C)}</div>
+          <div class="guest-box">
+            <button class="btn ghost guest-btn" id="tryGuest">ลองใช้ก่อน ไม่ต้องสมัคร</button>
+            <span>ความคืบหน้าจะเก็บไว้ในเบราว์เซอร์นี้ และรวมเข้าบัญชีให้เมื่อสมัครภายหลัง</span>
+          </div>
+        </div>
+      </section>`;
+    bindAuth(C, renderWelcome);
+    $app.querySelector("#tryGuest").addEventListener("click", () => {
+      try { localStorage.setItem(GUEST_OK, "1"); } catch (e) {}
+      document.body.classList.remove("gated");
+      if (!location.hash || location.hash === "#account") location.hash = "home"; else renderPage();
+    });
+  }
+
   function renderPage() {
     stopSession();
     document.body.classList.remove("in-session");
+    if (needGate()) { renderWelcome(); return; }
+    document.body.classList.remove("gated");
     document.querySelectorAll(".confetti, .float-xp").forEach((el) => el.remove());
     const page = currentPage();
     document.querySelectorAll("[data-go]").forEach((n) => {
@@ -1423,7 +1466,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       const wasUser = storeKey !== GUEST_KEY;
       if (wasUser) { storeKey = GUEST_KEY; fillData(readKey(GUEST_KEY)); }
       setSync("idle");
-      if (!wasUser && currentPage() !== "account") { authBusy = false; updateAccountButton(); return; }
+      if (!wasUser && currentPage() !== "account" && !document.body.classList.contains("gated")) { authBusy = false; updateAccountButton(); return; }
     }
     authBusy = false;
     updateAccountButton();
@@ -1489,27 +1532,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
           </div>
         </section>`;
     } else {
-      let form;
-      if (!cloudOn() || C.loadError) {
-        form = `<div class="notice">${C.loadError ? "โหลดระบบบัญชีไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วรีเฟรชหน้าเว็บ" : "ระบบบัญชียังไม่ได้เปิดใช้งาน ความคืบหน้าถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น"}</div>`;
-      } else if (!C.ready) {
-        form = `<div class="notice">กำลังตรวจสอบบัญชี…</div>`;
-      } else {
-        form = `
-          <h2 class="auth-title">${authTab === "signup" ? "สร้างบัญชีใหม่" : "เข้าสู่ระบบ"}</h2>
-          <button class="btn google-btn" id="google"><svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg> ดำเนินการต่อด้วย Google</button>
-          <div class="or"><span>หรือใช้อีเมล</span></div>
-          <form class="auth-form" id="authForm" novalidate>
-            ${authTab === "signup" ? `<label>ชื่อที่แสดง<input class="field" name="name" autocomplete="nickname" maxlength="40" placeholder="เช่น John"></label>` : ""}
-            <label>อีเมล<input class="field" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
-            <label><span class="lbl-row">รหัสผ่าน${authTab === "signin" ? `<button type="button" class="link-btn" id="forgot">ลืมรหัสผ่าน?</button>` : ""}</span><input class="field" name="pass" type="password" autocomplete="${authTab === "signup" ? "new-password" : "current-password"}" required minlength="6" placeholder="อย่างน้อย 6 ตัวอักษร"></label>
-            ${authTab === "signup" ? `<label>ยืนยันรหัสผ่าน<input class="field" name="pass2" type="password" autocomplete="new-password" required minlength="6" placeholder="พิมพ์รหัสผ่านอีกครั้ง"></label>` : ""}
-            <label class="show-pass"><input type="checkbox" id="showPass"> แสดงรหัสผ่าน</label>
-            <p class="form-msg" id="formMsg" role="alert"></p>
-            <button class="btn" type="submit">${authTab === "signup" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"}</button>
-          </form>
-          <p class="switch-auth">${authTab === "signup" ? `มีบัญชีอยู่แล้ว? <button class="link-btn strong" data-tab="signin">เข้าสู่ระบบ</button>` : `ยังไม่มีบัญชี? <button class="link-btn strong" data-tab="signup">สมัครสมาชิกฟรี</button>`}</p>`;
-      }
+      const form = authFormHTML(C);
       top = `
         <section class="auth-split">
           <div class="auth-pitch">
@@ -1557,14 +1580,54 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     $app.querySelectorAll("[data-rate]").forEach((b) => b.addEventListener("click", () => { data.settings.voiceRate = +b.dataset.rate; persist(); renderAccount(); speak("Hello, this is the reading speed."); }));
     $app.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => { smoothTheme(() => { applyTheme(b.dataset.themeSet); renderAccount(); }, b); }));
     const on = (id, fn) => { const el = $app.querySelector(id); if (el) el.addEventListener("click", fn); };
-    on("#signOut", async () => { await C.signOut(); toast("ออกจากระบบแล้ว"); });
+    on("#signOut", async () => { try { localStorage.removeItem(GUEST_OK); } catch (e) {} await C.signOut(); toast("ออกจากระบบแล้ว"); });
     on("#syncNow", () => cloudSaveNow());
+    bindAuth(C, renderAccount);
+    const resetBtn = $app.querySelector("#reset");
+    resetBtn.addEventListener("click", () => {
+      if (resetBtn.dataset.armed) {
+        const keep = { settings: data.settings, sound: data.sound };
+        fillData(keep);
+        persist(); renderHUD(); renderAccount();
+        toast("ล้างความคืบหน้าทั้งหมดแล้ว");
+      } else {
+        resetBtn.dataset.armed = "1";
+        resetBtn.textContent = "กดอีกครั้งเพื่อยืนยัน";
+        resetBtn.classList.add("armed");
+        setTimeout(() => { if (resetBtn.isConnected && resetBtn.dataset.armed) { delete resetBtn.dataset.armed; resetBtn.textContent = "ล้างข้อมูล"; resetBtn.classList.remove("armed"); } }, 4000);
+      }
+    });
+  }
+  function authFormHTML(C) {
+      if (!cloudOn() || C.loadError) {
+        return `<div class="notice">${C.loadError ? "โหลดระบบบัญชีไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วรีเฟรชหน้าเว็บ" : "ระบบบัญชียังไม่ได้เปิดใช้งาน ความคืบหน้าถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น"}</div>`;
+      } else if (!C.ready) {
+        return `<div class="notice">กำลังตรวจสอบบัญชี…</div>`;
+      } else {
+        return `
+          <h2 class="auth-title">${authTab === "signup" ? "สร้างบัญชีใหม่" : "เข้าสู่ระบบ"}</h2>
+          <button class="btn google-btn" id="google"><svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg> ดำเนินการต่อด้วย Google</button>
+          <div class="or"><span>หรือใช้อีเมล</span></div>
+          <form class="auth-form" id="authForm" novalidate>
+            ${authTab === "signup" ? `<label>ชื่อที่แสดง<input class="field" name="name" autocomplete="nickname" maxlength="40" placeholder="เช่น John"></label>` : ""}
+            <label>อีเมล<input class="field" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+            <label><span class="lbl-row">รหัสผ่าน${authTab === "signin" ? `<button type="button" class="link-btn" id="forgot">ลืมรหัสผ่าน?</button>` : ""}</span><input class="field" name="pass" type="password" autocomplete="${authTab === "signup" ? "new-password" : "current-password"}" required minlength="6" placeholder="อย่างน้อย 6 ตัวอักษร"></label>
+            ${authTab === "signup" ? `<label>ยืนยันรหัสผ่าน<input class="field" name="pass2" type="password" autocomplete="new-password" required minlength="6" placeholder="พิมพ์รหัสผ่านอีกครั้ง"></label>` : ""}
+            <label class="show-pass"><input type="checkbox" id="showPass"> แสดงรหัสผ่าน</label>
+            <p class="form-msg" id="formMsg" role="alert"></p>
+            <button class="btn" type="submit">${authTab === "signup" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"}</button>
+          </form>
+          <p class="switch-auth">${authTab === "signup" ? `มีบัญชีอยู่แล้ว? <button class="link-btn strong" data-tab="signin">เข้าสู่ระบบ</button>` : `ยังไม่มีบัญชี? <button class="link-btn strong" data-tab="signup">สมัครสมาชิกฟรี</button>`}</p>`;
+      }
+  }
+  function bindAuth(C, rerender) {
+    const on = (id, fn) => { const el = $app.querySelector(id); if (el) el.addEventListener("click", fn); };
     on("#google", async (e) => {
       e.currentTarget.disabled = true; authBusy = true;
       const r = await C.signInGoogle();
       if (!r.ok) { authBusy = false; showFormMsg(r.error); const g = $app.querySelector("#google"); if (g) g.disabled = false; }
     });
-    $app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { authTab = b.dataset.tab; renderAccount(); const f = $app.querySelector(".auth-form .field"); if (f) f.focus(); }));
+    $app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { authTab = b.dataset.tab; rerender(); const f = $app.querySelector(".auth-form .field"); if (f) f.focus(); }));
     on("#forgot", async () => {
       const email = $app.querySelector('[name="email"]').value.trim();
       if (!email) return showFormMsg("ใส่อีเมลก่อน แล้วกด \"ลืมรหัสผ่าน?\" อีกครั้ง");
@@ -1595,20 +1658,6 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       btn.disabled = true; authBusy = true;
       const r = authTab === "signup" ? await C.signUpEmail(String(f.get("name") || "").trim(), email, pass) : await C.signInEmail(email, pass);
       if (!r.ok) { authBusy = false; btn.disabled = false; showFormMsg(r.error); }
-    });
-    const resetBtn = $app.querySelector("#reset");
-    resetBtn.addEventListener("click", () => {
-      if (resetBtn.dataset.armed) {
-        const keep = { settings: data.settings, sound: data.sound };
-        fillData(keep);
-        persist(); renderHUD(); renderAccount();
-        toast("ล้างความคืบหน้าทั้งหมดแล้ว");
-      } else {
-        resetBtn.dataset.armed = "1";
-        resetBtn.textContent = "กดอีกครั้งเพื่อยืนยัน";
-        resetBtn.classList.add("armed");
-        setTimeout(() => { if (resetBtn.isConnected && resetBtn.dataset.armed) { delete resetBtn.dataset.armed; resetBtn.textContent = "ล้างข้อมูล"; resetBtn.classList.remove("armed"); } }, 4000);
-      }
     });
   }
   function showFormMsg(msg, good) {

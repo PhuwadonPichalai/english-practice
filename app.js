@@ -211,7 +211,8 @@
     voice = vs.find((v) => /en-US/i.test(v.lang) && /Google|Samantha|Microsoft/i.test(v.name)) || vs.find((v) => /^en/i.test(v.lang)) || null;
   }
   if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-  function speak(text, rate = 0.9) {
+  function speak(text, rate) {
+    if (rate == null) rate = (data.settings && data.settings.voiceRate) || 0.9;
     if (!("speechSynthesis" in window)) return false;
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -852,8 +853,8 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     `;
     bindQuit(); bindSpeak();
     const big = $app.querySelector("#bigSpeak");
-    if (big) big.addEventListener("click", () => speak(w.word, 0.85));
-    if (cfg.autoSpeak) setTimeout(() => speak(w.word, 0.85), 250);
+    if (big) big.addEventListener("click", () => speak(w.word, ((data.settings.voiceRate) || 0.9) - 0.05));
+    if (cfg.autoSpeak) setTimeout(() => speak(w.word, ((data.settings.voiceRate) || 0.9) - 0.05), 250);
 
     const buttons = [...$app.querySelectorAll(".option")];
     const choose = (idx) => {
@@ -1257,75 +1258,128 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
   }
 
   // ---------------- page: account ----------------
+  const IC = {
+    timer: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>',
+    sound: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
+    voice: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg>',
+    theme: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+    trash: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
+    cloud: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.3 12 3.5 3.5 0 0 0 6.5 19z"/></svg>',
+    devices: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="2"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="12" rx="1.5"/></svg>',
+    merge: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v6a6 6 0 0 0 6 6h6"/><path d="m15 12 3 3-3 3"/><circle cx="6" cy="3" r="0"/></svg>',
+  };
+  const themePref = () => { try { return localStorage.getItem("wu-theme") || "system"; } catch (e) { return "system"; } };
+  function applyTheme(pref) {
+    try { localStorage.setItem("wu-theme", pref); } catch (e) {}
+    document.documentElement.dataset.theme = pref === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : pref;
+  }
+  function settingRow(icon, title, desc, control, cls = "") {
+    return `<div class="set-row ${cls}"><span class="set-ic">${icon}</span><div class="set-text"><b>${title}</b><span>${desc}</span></div><div class="set-ctl">${control}</div></div>`;
+  }
+  const segCtl = (label, items, current, attr) =>
+    `<div class="seg" role="group" aria-label="${label}">${items.map(([v, t]) => `<button class="${String(current) === String(v) ? "active" : ""}" ${attr}="${v}" aria-pressed="${String(current) === String(v)}">${t}</button>`).join("")}</div>`;
+
   let authTab = "signin";
   function renderAccount() {
     const C = window.WUCloud || { enabled: false };
     const u = C.user;
     const autoNext = data.settings.autoNext ?? 3;
-    let accountHTML;
-    if (!cloudOn() || C.loadError) {
-      accountHTML = `<div class="notice">${C.loadError ? "โหลดระบบบัญชีไม่สำเร็จ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วรีเฟรชหน้าเว็บ" : "ระบบบัญชียังไม่ได้เปิดใช้งาน ตอนนี้ความคืบหน้าถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น"}</div>`;
-    } else if (!C.ready) {
-      accountHTML = `<div class="notice">กำลังตรวจสอบบัญชี…</div>`;
-    } else if (u) {
-      accountHTML = `
-        <div class="profile">
-          <span class="avatar big">${avatarHTML(u, 64)}</span>
-          <div><b>${esc(u.name)}</b><span>${esc(u.email)}</span><span class="sync-line" data-sync="${sync.state}">${esc(syncText())}</span></div>
-        </div>
-        <p class="muted-p">ความคืบหน้าทั้งหมดถูกบันทึกในบัญชีนี้ เข้าสู่ระบบจากเครื่องไหนก็เล่นต่อได้</p>
-        <div class="row-btns">
-          <button class="btn ghost" id="syncNow">บันทึกตอนนี้</button>
-          <button class="btn ghost" id="signOut">ออกจากระบบ</button>
-        </div>`;
+    const li = levelInfo(data.xp || 0);
+    let top;
+
+    if (u) {
+      top = `
+        <section class="profile-hero">
+          <div class="ph-main">
+            <span class="avatar big">${avatarHTML(u, 72)}</span>
+            <div class="ph-id">
+              <h2>${esc(u.name)}</h2>
+              <span class="ph-mail">${esc(u.email)}</span>
+              <span class="sync-pill" data-sync="${sync.state}">${esc(syncText() || "เชื่อมต่อกับบัญชีแล้ว")}</span>
+            </div>
+            <div class="ph-actions">
+              <button class="btn ghost" id="syncNow">${IC.cloud} บันทึกตอนนี้</button>
+              <button class="btn ghost" id="signOut">ออกจากระบบ</button>
+            </div>
+          </div>
+          <div class="ph-level">
+            <span class="lv-badge">Lv ${li.lv}</span>
+            <span class="xpbar big"><span style="width:${(li.into / li.need) * 100}%"></span></span>
+            <span class="ph-xp">${li.into} / ${li.need} XP</span>
+          </div>
+          <div class="ph-stats">
+            <div><b>${learnedCount()}</b><span>คำที่เรียนแล้ว</span></div>
+            <div><b>${currentStreak()}</b><span>วันติดต่อกัน</span></div>
+            <div><b>${data.totalAnswered || 0}</b><span>ข้อที่ทำ</span></div>
+            <div><b>${(data.badges || []).length}/${BADGES.length}</b><span>เหรียญ</span></div>
+          </div>
+        </section>`;
     } else {
-      accountHTML = `
-        <p class="muted-p">เข้าสู่ระบบเพื่อบันทึกความคืบหน้าไว้ในบัญชี แล้วเล่นต่อได้ทุกเครื่อง ความคืบหน้าที่เล่นไว้ในเครื่องนี้จะถูกรวมเข้าบัญชีให้อัตโนมัติ</p>
-        <button class="btn google-btn" id="google"><svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg> เข้าสู่ระบบด้วย Google</button>
-        <div class="or"><span>หรือใช้อีเมล</span></div>
-        <div class="seg auth-tabs" role="tablist">
-          <button class="${authTab === "signin" ? "active" : ""}" data-tab="signin" role="tab">เข้าสู่ระบบ</button>
-          <button class="${authTab === "signup" ? "active" : ""}" data-tab="signup" role="tab">สมัครสมาชิก</button>
-        </div>
-        <form class="auth-form" id="authForm" novalidate>
-          ${authTab === "signup" ? `<label>ชื่อที่แสดง<input class="field" name="name" autocomplete="nickname" maxlength="40" placeholder="เช่น ดอน"></label>` : ""}
-          <label>อีเมล<input class="field" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
-          <label>รหัสผ่าน<input class="field" name="pass" type="password" autocomplete="${authTab === "signup" ? "new-password" : "current-password"}" required minlength="6" placeholder="อย่างน้อย 6 ตัวอักษร"></label>
-          <p class="form-msg" id="formMsg" role="alert"></p>
-          <button class="btn" type="submit">${authTab === "signup" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"}</button>
-          ${authTab === "signin" ? `<button type="button" class="link-btn" id="forgot">ลืมรหัสผ่าน</button>` : ""}
-        </form>`;
+      let form;
+      if (!cloudOn() || C.loadError) {
+        form = `<div class="notice">${C.loadError ? "โหลดระบบบัญชีไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วรีเฟรชหน้าเว็บ" : "ระบบบัญชียังไม่ได้เปิดใช้งาน ความคืบหน้าถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น"}</div>`;
+      } else if (!C.ready) {
+        form = `<div class="notice">กำลังตรวจสอบบัญชี…</div>`;
+      } else {
+        form = `
+          <h2 class="auth-title">${authTab === "signup" ? "สร้างบัญชีใหม่" : "เข้าสู่ระบบ"}</h2>
+          <button class="btn google-btn" id="google"><svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg> ดำเนินการต่อด้วย Google</button>
+          <div class="or"><span>หรือใช้อีเมล</span></div>
+          <form class="auth-form" id="authForm" novalidate>
+            ${authTab === "signup" ? `<label>ชื่อที่แสดง<input class="field" name="name" autocomplete="nickname" maxlength="40" placeholder="เช่น ดอน"></label>` : ""}
+            <label>อีเมล<input class="field" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+            <label><span class="lbl-row">รหัสผ่าน${authTab === "signin" ? `<button type="button" class="link-btn" id="forgot">ลืมรหัสผ่าน?</button>` : ""}</span><input class="field" name="pass" type="password" autocomplete="${authTab === "signup" ? "new-password" : "current-password"}" required minlength="6" placeholder="อย่างน้อย 6 ตัวอักษร"></label>
+            <p class="form-msg" id="formMsg" role="alert"></p>
+            <button class="btn" type="submit">${authTab === "signup" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"}</button>
+          </form>
+          <p class="switch-auth">${authTab === "signup" ? `มีบัญชีอยู่แล้ว? <button class="link-btn strong" data-tab="signin">เข้าสู่ระบบ</button>` : `ยังไม่มีบัญชี? <button class="link-btn strong" data-tab="signup">สมัครสมาชิกฟรี</button>`}</p>`;
+      }
+      top = `
+        <section class="auth-split">
+          <div class="auth-pitch">
+            <h2>เก็บความคืบหน้าไว้ในบัญชี</h2>
+            <ul class="perks">
+              <li><span class="perk-ic">${IC.devices}</span><div><b>เล่นต่อได้ทุกเครื่อง</b><span>เริ่มบนมือถือ แล้วไปต่อบนคอมได้ทันที</span></div></li>
+              <li><span class="perk-ic">${IC.cloud}</span><div><b>ข้อมูลไม่หาย</b><span>ล้างเบราว์เซอร์หรือเปลี่ยนเครื่องก็ยังอยู่ครบ</span></div></li>
+              <li><span class="perk-ic">${IC.merge}</span><div><b>ไม่ต้องเริ่มใหม่</b><span>สิ่งที่เล่นไว้ในเครื่องนี้ (Lv ${li.lv}, ${learnedCount()} คำ) จะถูกรวมเข้าบัญชีให้</span></div></li>
+            </ul>
+          </div>
+          <div class="auth-box">${form}</div>
+        </section>`;
     }
 
+    const tp = themePref();
     $app.innerHTML = `
       <h1 class="page-title">บัญชี</h1>
-      <p class="page-sub">${u ? "จัดการบัญชีและการตั้งค่าการเล่น" : "เข้าสู่ระบบเพื่อเซฟความคืบหน้า และปรับการตั้งค่าการเล่น"}</p>
-      <section class="section account-card">${accountHTML}</section>
+      <p class="page-sub">${u ? "ข้อมูลบัญชีและการตั้งค่าการเล่นของคุณ" : "เข้าสู่ระบบเพื่อเซฟความคืบหน้า หรือปรับการตั้งค่าการเล่นด้านล่าง"}</p>
+      ${top}
 
-      <section class="section">
-        <div class="section-head"><div><h2>การตั้งค่า</h2></div></div>
-        <div class="setting">
-          <div><b>นับถอยหลังไปข้อถัดไป</b><span>หลังตอบแล้วจะไปข้อถัดไปเองเมื่อครบเวลา ถ้าตอบผิดจะได้เวลาอ่านเฉลยเพิ่มอีก 2 วินาที</span></div>
-          <div class="seg" role="group" aria-label="นับถอยหลัง">${[[0, "ปิด"], [2, "2 วิ"], [3, "3 วิ"], [5, "5 วิ"]].map(([v, t]) => `<button class="${autoNext === v ? "active" : ""}" data-auto="${v}">${t}</button>`).join("")}</div>
-        </div>
-        <div class="setting">
-          <div><b>เสียงเอฟเฟกต์</b><span>เสียงตอนตอบถูก ตอบผิด และเลเวลอัป</span></div>
-          <div class="seg" role="group" aria-label="เสียงเอฟเฟกต์"><button class="${data.sound ? "active" : ""}" data-snd="1">เปิด</button><button class="${!data.sound ? "active" : ""}" data-snd="0">ปิด</button></div>
-        </div>
-        <div class="setting">
-          <div><b>ธีม</b><span>สว่างหรือมืด</span></div>
-          <div class="seg" role="group" aria-label="ธีม"><button class="${document.documentElement.dataset.theme !== "dark" ? "active" : ""}" data-theme-set="light">สว่าง</button><button class="${document.documentElement.dataset.theme === "dark" ? "active" : ""}" data-theme-set="dark">มืด</button></div>
-        </div>
+      <h2 class="block-title">การตั้งค่า</h2>
+      <section class="set-group">
+        <h3>การเล่น</h3>
+        ${settingRow(IC.timer, "นับถอยหลังไปข้อถัดไป", "หลังตอบจะไปข้อถัดไปเองเมื่อครบเวลา ถ้าตอบผิดจะได้เวลาอ่านเฉลยเพิ่มอีก 2 วินาที",
+          segCtl("นับถอยหลัง", [[0, "ปิด"], [2, "2 วิ"], [3, "3 วิ"], [5, "5 วิ"]], autoNext, "data-auto"))}
+        ${settingRow(IC.sound, "เสียงเอฟเฟกต์", "เสียงตอนตอบถูก ตอบผิด และเลเวลอัป",
+          segCtl("เสียงเอฟเฟกต์", [[1, "เปิด"], [0, "ปิด"]], data.sound ? 1 : 0, "data-snd"))}
+        ${settingRow(IC.voice, "ความเร็วเสียงอ่าน", "ความเร็วตอนอ่านออกเสียงคำศัพท์และประโยค",
+          segCtl("ความเร็วเสียงอ่าน", [[0.7, "ช้า"], [0.9, "ปกติ"], [1.1, "เร็ว"]], data.settings.voiceRate ?? 0.9, "data-rate"))}
+      </section>
+      <section class="set-group">
+        <h3>การแสดงผล</h3>
+        ${settingRow(IC.theme, "ธีม", "เลือก \"ตามเครื่อง\" เพื่อให้เปลี่ยนตามการตั้งค่าของอุปกรณ์",
+          segCtl("ธีม", [["light", "สว่าง"], ["dark", "มืด"], ["system", "ตามเครื่อง"]], tp, "data-theme-set"))}
+      </section>
+      <section class="set-group danger">
+        <h3>ข้อมูล</h3>
+        ${settingRow(IC.trash, "ล้างความคืบหน้าทั้งหมด", u ? "ลบคำที่เรียน สถิติ XP และเหรียญทั้งหมดในบัญชีนี้ ย้อนกลับไม่ได้" : "ลบคำที่เรียน สถิติ XP และเหรียญทั้งหมดในเบราว์เซอร์นี้ ย้อนกลับไม่ได้",
+          `<button class="btn ghost danger-btn" id="reset">ล้างข้อมูล</button>`)}
       </section>
     `;
 
     $app.querySelectorAll("[data-auto]").forEach((b) => b.addEventListener("click", () => { data.settings.autoNext = +b.dataset.auto; persist(); renderAccount(); }));
-    $app.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => { data.sound = b.dataset.snd === "1"; persist(); renderHUD(); renderAccount(); }));
-    $app.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => {
-      document.documentElement.dataset.theme = b.dataset.themeSet;
-      try { localStorage.setItem("wu-theme", b.dataset.themeSet); } catch (e) {}
-      renderAccount();
-    }));
+    $app.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => { data.sound = b.dataset.snd === "1"; persist(); renderHUD(); renderAccount(); if (data.sound) sfx.ok(0); }));
+    $app.querySelectorAll("[data-rate]").forEach((b) => b.addEventListener("click", () => { data.settings.voiceRate = +b.dataset.rate; persist(); renderAccount(); speak("Hello, this is the reading speed."); }));
+    $app.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => { applyTheme(b.dataset.themeSet); renderAccount(); }));
     const on = (id, fn) => { const el = $app.querySelector(id); if (el) el.addEventListener("click", fn); };
     on("#signOut", async () => { await C.signOut(); toast("ออกจากระบบแล้ว"); });
     on("#syncNow", () => cloudSaveNow());
@@ -1334,10 +1388,10 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       const r = await C.signInGoogle();
       if (!r.ok) { authBusy = false; showFormMsg(r.error); const g = $app.querySelector("#google"); if (g) g.disabled = false; }
     });
-    $app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { authTab = b.dataset.tab; renderAccount(); }));
+    $app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { authTab = b.dataset.tab; renderAccount(); const f = $app.querySelector(".auth-form .field"); if (f) f.focus(); }));
     on("#forgot", async () => {
       const email = $app.querySelector('[name="email"]').value.trim();
-      if (!email) return showFormMsg("ใส่อีเมลก่อน แล้วกด \"ลืมรหัสผ่าน\" อีกครั้ง");
+      if (!email) return showFormMsg("ใส่อีเมลก่อน แล้วกด \"ลืมรหัสผ่าน?\" อีกครั้ง");
       const r = await C.resetPassword(email);
       showFormMsg(r.ok ? "ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่อีเมลแล้ว" : r.error, r.ok);
     });
@@ -1351,6 +1405,20 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       btn.disabled = true; authBusy = true;
       const r = authTab === "signup" ? await C.signUpEmail(String(f.get("name") || "").trim(), email, pass) : await C.signInEmail(email, pass);
       if (!r.ok) { authBusy = false; btn.disabled = false; showFormMsg(r.error); }
+    });
+    const resetBtn = $app.querySelector("#reset");
+    resetBtn.addEventListener("click", () => {
+      if (resetBtn.dataset.armed) {
+        const keep = { settings: data.settings, sound: data.sound };
+        fillData(keep);
+        persist(); renderHUD(); renderAccount();
+        toast("ล้างความคืบหน้าทั้งหมดแล้ว");
+      } else {
+        resetBtn.dataset.armed = "1";
+        resetBtn.textContent = "กดอีกครั้งเพื่อยืนยัน";
+        resetBtn.classList.add("armed");
+        setTimeout(() => { if (resetBtn.isConnected && resetBtn.dataset.armed) { delete resetBtn.dataset.armed; resetBtn.textContent = "ล้างข้อมูล"; resetBtn.classList.remove("armed"); } }, 4000);
+      }
     });
   }
   function showFormMsg(msg, good) {
@@ -1380,7 +1448,6 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
         <span><i class="dot"></i> ยังไม่เคยเรียน</span>
         <span><i class="dot learning"></i> กำลังเรียนรู้</span>
         <span><i class="dot mastered"></i> จำได้แล้ว (ทบทวนผ่าน ${MASTER_BOX} รอบ)</span>
-        <button class="link-btn" id="reset">ล้างความคืบหน้าทั้งหมด</button>
       </div>
       <div class="word-list" id="list"></div>
     `;
@@ -1404,19 +1471,9 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     $app.querySelectorAll("[data-lib]").forEach((b) => b.addEventListener("click", () => { libLevel = b.dataset.lib; renderLibrary(); }));
     $app.querySelector("#q").addEventListener("input", (e) => { libQuery = e.target.value; draw(); });
     $app.querySelector("#f").addEventListener("change", (e) => { libFilter = e.target.value; draw(); });
-    const resetBtn = $app.querySelector("#reset");
-    resetBtn.addEventListener("click", () => {
-      if (resetBtn.dataset.armed) {
-        data.words = {}; data.best = {}; data.streak = { last: null, count: 0 }; data.totalAnswered = 0;
-        persist(); renderLibrary();
-      } else {
-        resetBtn.dataset.armed = "1";
-        resetBtn.textContent = "กดอีกครั้งเพื่อยืนยัน (ย้อนกลับไม่ได้)";
-        resetBtn.style.color = "var(--bad)";
-        setTimeout(() => { if (resetBtn.isConnected) { delete resetBtn.dataset.armed; resetBtn.textContent = "ล้างความคืบหน้าทั้งหมด"; resetBtn.style.color = ""; } }, 4000);
-      }
-    });
   }
+
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (themePref() === "system") applyTheme("system"); });
 
   // ---------------- boot ----------------
   updateAccountButton();

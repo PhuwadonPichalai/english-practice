@@ -271,30 +271,108 @@
   }
 
   let actx = null;
-  function tone(freqs, dur = 0.1, type = "sine", gap = 0.07, vol = 0.07) {
-    if (!data.sound) return;
+  function ac() {
+    if (!data.sound) return null;
     try {
       actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      const t0 = actx.currentTime + 0.01;
+      if (actx.state === "suspended") actx.resume();
+      return actx;
+    } catch (e) { return null; }
+  }
+  // โน้ตสั้นๆ ต่อกัน (freqs เล่นห่างกัน gap วินาที)
+  function tone(freqs, dur = 0.1, type = "sine", gap = 0.07, vol = 0.07, delay = 0) {
+    const a = ac(); if (!a) return;
+    try {
+      const t0 = a.currentTime + 0.01 + delay;
       freqs.forEach((f, i) => {
-        const o = actx.createOscillator(), g = actx.createGain();
+        const o = a.createOscillator(), g = a.createGain();
         o.type = type; o.frequency.value = f;
         const st = t0 + i * gap;
         g.gain.setValueAtTime(0.0001, st);
         g.gain.exponentialRampToValueAtTime(vol, st + 0.012);
         g.gain.exponentialRampToValueAtTime(0.0001, st + dur);
-        o.connect(g).connect(actx.destination);
+        o.connect(g).connect(a.destination);
         o.start(st); o.stop(st + dur + 0.03);
       });
     } catch (e) {}
   }
+  // เสียงไล่ระดับ (pitch slide) เช่นเสียงป๊อป
+  function slide(f1, f2, dur = 0.12, type = "sine", vol = 0.06, delay = 0) {
+    const a = ac(); if (!a) return;
+    try {
+      const st = a.currentTime + 0.01 + delay;
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f1, st);
+      o.frequency.exponentialRampToValueAtTime(f2, st + dur);
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.exponentialRampToValueAtTime(vol, st + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, st + dur);
+      o.connect(g).connect(a.destination);
+      o.start(st); o.stop(st + dur + 0.03);
+    } catch (e) {}
+  }
+  // เสียงลม (noise ผ่าน filter) สำหรับพลิกการ์ด/เปลี่ยนหน้า
+  let noiseBuf = null;
+  function whoosh(f1 = 600, f2 = 2400, dur = 0.18, vol = 0.05, delay = 0) {
+    const a = ac(); if (!a) return;
+    try {
+      if (!noiseBuf) {
+        noiseBuf = a.createBuffer(1, a.sampleRate * 0.5, a.sampleRate);
+        const d = noiseBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      const st = a.currentTime + 0.01 + delay;
+      const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+      src.buffer = noiseBuf;
+      f.type = "bandpass"; f.Q.value = 1.2;
+      f.frequency.setValueAtTime(f1, st);
+      f.frequency.exponentialRampToValueAtTime(f2, st + dur);
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.exponentialRampToValueAtTime(vol, st + dur * 0.3);
+      g.gain.exponentialRampToValueAtTime(0.0001, st + dur);
+      src.connect(f).connect(g).connect(a.destination);
+      src.start(st); src.stop(st + dur + 0.02);
+    } catch (e) {}
+  }
   const sfx = {
+    // ตอบ
     ok: (c) => { const k = Math.pow(1.06, Math.min(c, 10)); tone([660 * k, 990 * k], 0.12); },
     bad: () => tone([233, 175], 0.18, "triangle", 0.1, 0.06),
+    combo: (c) => { const k = Math.pow(1.06, Math.min(c, 10)); tone([1320 * k, 1568 * k, 1976 * k], 0.09, "sine", 0.05, 0.035, 0.14); },
+    // ผลลัพธ์
     win: () => tone([523, 659, 784, 1047], 0.16, "sine", 0.09),
+    done: () => tone([523, 659, 784], 0.14, "sine", 0.1, 0.05),
     level: () => tone([523, 784, 1047, 1319, 1568], 0.18, "triangle", 0.08, 0.06),
+    badge: () => { tone([1568, 2093, 2637], 0.22, "sine", 0.07, 0.04, 0.55); tone([784], 0.4, "triangle", 0, 0.03, 0.55); },
+    record: () => tone([784, 988, 1175, 1568], 0.14, "square", 0.08, 0.025, 0.4),
+    goal: () => tone([659, 880, 1109, 1319], 0.2, "triangle", 0.09, 0.05, 0.2),
+    // ปุ่มและหน้า
+    tap: () => slide(900, 620, 0.05, "sine", 0.035),
+    select: () => slide(700, 1050, 0.07, "sine", 0.045),
+    page: () => whoosh(500, 1800, 0.16, 0.035),
+    open: () => { whoosh(400, 1600, 0.2, 0.03); slide(420, 760, 0.12, "sine", 0.03); },
+    close: () => slide(700, 380, 0.1, "sine", 0.03),
+    toggle: () => tone([520, 780], 0.06, "square", 0.05, 0.018),
+    // ระหว่างเล่น
+    start: () => tone([392, 523, 659, 784], 0.12, "triangle", 0.06, 0.05),
+    flip: () => whoosh(900, 3200, 0.14, 0.05),
+    next: () => whoosh(1200, 500, 0.12, 0.025),
+    key: () => tone([1800 + Math.random() * 400], 0.025, "square", 0, 0.012),
     tick: () => tone([1200], 0.04, "square", 0, 0.02),
+    tock: () => tone([900], 0.05, "square", 0, 0.025),
+    timeup: () => tone([440, 330, 220], 0.22, "sawtooth", 0.14, 0.04),
+    skip: () => slide(600, 1200, 0.1, "triangle", 0.04),
+    speak: () => slide(500, 700, 0.05, "sine", 0.025),
   };
+  // เสียงคลิกปุ่มทั่วทั้งเว็บ (ปุ่มที่มีเสียงของตัวเองจะถูกข้าม)
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("button, summary");
+    if (!b || b.disabled) return;
+    if (b.closest(".option, .flash, .flash-actions, #nextRow, .learn-actions, [data-go], #soundToggle, #themeToggle, [data-speak], .big-speak, #goStart, #again, #retryWrong, #closeSetup, #startBtn, [data-mode], #quickSpeed, .study-btn, #quit, #spellForm, [data-snd]")) return;
+    if (b.matches(".opt, .pill, .seg button, .filter, [data-lib], [data-tab], [data-pl], [data-pm], [data-pc], [data-plc], [data-auto], [data-rate], [data-theme-set], summary")) sfx.select();
+    else sfx.tap();
+  }, true);
 
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   function confetti() {
@@ -356,11 +434,12 @@
     return after > before ? after : 0;
   }
   document.getElementById("soundToggle").addEventListener("click", () => {
-    data.sound = !data.sound; persist(); renderHUD(); if (data.sound) sfx.ok(0);
+    data.sound = !data.sound; persist(); renderHUD(); if (data.sound) sfx.toggle();
   });
 
   // ---------------- theme ----------------
   document.getElementById("themeToggle").addEventListener("click", () => {
+    sfx.toggle();
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem("wu-theme", next); } catch (e) {}
@@ -400,6 +479,7 @@
     window.scrollTo(0, 0);
   }
   function go(view) {
+    sfx.page();
     if (currentPage() === view && location.hash) renderPage();
     else location.hash = view;
   }
@@ -588,7 +668,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       dlg.setAttribute("aria-labelledby", "setupTitle");
       document.body.appendChild(dlg);
       dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
-      dlg.addEventListener("close", () => document.body.classList.remove("sheet-open"));
+      dlg.addEventListener("close", () => { document.body.classList.remove("sheet-open"); if (!dlg._starting) sfx.close(); dlg._starting = false; });
     }
     const draw = () => {
       const prevBody = dlg.querySelector(".sheet-body");
@@ -653,12 +733,14 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
         data.settings.count = draft.count;
         data.settings.learnCount = draft.learnCount;
         persist();
+        dlg._starting = true;
         dlg.close();
         startSession(draft.mode);
       });
     };
     draw();
     document.body.classList.add("sheet-open");
+    sfx.open();
     if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
     dlg.querySelector(".sheet-body").scrollTop = 0;
     dlg.querySelector("#goStart").focus({ preventScroll: true });
@@ -745,6 +827,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     if (!words.length) { document.body.classList.remove("in-session"); return renderPage(); }
     S = { mode, level, words, i: 0, correct: 0, wrong: [], answered: false, combo: 0, maxCombo: 0, xp: 0, levelUp: 0, answeredN: 0,
       requeue: mode === "learn" || mode === "review", retry: [], set: words.slice(), skipped: [] };
+    sfx.start();
     if (mode === "learn") { S.phase = "intro"; S.introI = 0; renderLearnIntro(); window.scrollTo(0, 0); return; }
     if (speed) {
       S.endAt = Date.now() + 60000;
@@ -755,7 +838,9 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
         if (bar) bar.style.width = (left / 60000) * 100 + "%";
         if (ct) ct.textContent = Math.ceil(left / 1000) + " วิ";
         if (left <= 10000 && bar) bar.parentElement.classList.add("hurry");
-        if (left <= 0) { clearInterval(S.timer); S.timer = null; renderResult(); }
+        const sec = Math.ceil(left / 1000);
+        if (left > 0 && sec <= 10 && sec !== S.lastTick) { S.lastTick = sec; sec <= 3 ? sfx.tock() : sfx.tick(); }
+        if (left <= 0) { clearInterval(S.timer); S.timer = null; sfx.timeup(); renderResult(); }
       }, 100);
     }
     renderQuestion();
@@ -777,7 +862,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
   }
 
   function bindQuit() {
-    $app.querySelector("#quit").addEventListener("click", () => renderPage());
+    $app.querySelector("#quit").addEventListener("click", () => { sfx.close(); renderPage(); });
   }
 
   function renderQuestion() {
@@ -899,6 +984,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     bindQuit();
     const input = $app.querySelector("#spellInput");
     input.focus();
+    input.addEventListener("input", () => { if (!S.answered) sfx.key(); });
     $app.querySelector("#spellForm").addEventListener("submit", (e) => {
       e.preventDefault();
       if (S.answered) return next();
@@ -944,7 +1030,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     `;
     bindQuit(); bindSpeak();
     const card = $app.querySelector("#flash");
-    const flip = () => card.classList.toggle("flipped");
+    const flip = () => { card.classList.toggle("flipped"); sfx.flip(); };
     card.addEventListener("click", flip);
     const mark = (ok) => {
       if (S.answered) return;
@@ -972,7 +1058,8 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       const gain = base + Math.min(S.combo - 1, 5) * 2;
       S.xp += gain;
       const lv = gainXP(gain);
-      if (lv) { S.levelUp = lv; sfx.level(); } else sfx.ok(S.combo);
+      if (lv) { S.levelUp = lv; sfx.level(); } else { sfx.ok(S.combo); if (S.combo >= 3 && (S.combo === 3 || S.combo % 5 === 0)) sfx.combo(S.combo); }
+      if (dailyCount() === DAILY_GOAL) sfx.goal();
       floatText("+" + gain + " XP", $app.querySelector(".card, .flash"));
     } else {
       if (!S.wrong.includes(w)) S.wrong.push(w);
@@ -1026,18 +1113,19 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     hold.className = "btn ghost"; hold.id = "holdBtn"; hold.textContent = "หยุดรอ";
     row.insertBefore(hold, nb);
     hold.addEventListener("click", () => {
-      clearAutoNext();
+      clearAutoNext(); sfx.close();
       nb.classList.remove("counting");
       nb.textContent = label;
       hold.remove();
       nb.focus({ preventScroll: true });
     });
-    autoI = setInterval(() => { left--; const n = nb.querySelector(".cd-num"); if (n) n.textContent = Math.max(left, 0); }, 1000);
+    autoI = setInterval(() => { left--; const n = nb.querySelector(".cd-num"); if (n) n.textContent = Math.max(left, 0); if (left > 0 && left <= 3) sfx.tick(); }, 1000);
     autoT = setTimeout(() => { clearAutoNext(); if (S && S.answered && $app.contains(nb)) next(); }, sec * 1000);
   }
 
   function next() {
     clearAutoNext();
+    if (S.mode !== "speed") sfx.next();
     S.i++;
     if (S.mode === "speed") {
       if (S.i >= S.words.length) { S.words = shuffle(S.words); S.i = 0; }
@@ -1079,6 +1167,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     bindQuit(); bindSpeak();
     setTimeout(() => speak(w.word), 200);
     const advance = () => {
+      sfx.next();
       S.introI++;
       if (S.introI >= S.words.length) {
         if (!S.words.length) return renderResult();
@@ -1089,6 +1178,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     };
     $app.querySelector("#gotIt").addEventListener("click", advance);
     $app.querySelector("#knowIt").addEventListener("click", () => {
+      sfx.skip();
       // คำที่รู้แล้ว: ตั้งให้ทบทวนอีก 7 วัน แล้วดึงคำใหม่มาแทน
       data.words[w.word] = { r: 1, x: 0, box: 3, due: dayNum() + INTERVALS[3] };
       persist();
@@ -1151,7 +1241,9 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
           </div>` : ""}
       </div>
     `;
-    if (great || S.levelUp || newBadges.length) { confetti(); sfx.win(); }
+    if (great || S.levelUp || newBadges.length) { confetti(); sfx.win(); } else sfx.done();
+    if (newBadges.length) sfx.badge();
+    if (isBest && prevBest != null) sfx.record();
     $app.querySelector("#again").addEventListener("click", () => startSession(S.mode));
     $app.querySelector("#home").addEventListener("click", () => go("practice"));
     const rw = $app.querySelector("#retryWrong");
@@ -1197,7 +1289,8 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
           </div>
         </div>
       </div>`;
-    if (firstTry === set.length || S.levelUp || newBadges.length) { confetti(); sfx.win(); }
+    if (firstTry === set.length || S.levelUp || newBadges.length) { confetti(); sfx.win(); } else sfx.done();
+    if (newBadges.length) sfx.badge();
     const again = $app.querySelector("#again");
     if (again) again.addEventListener("click", () => startSession(S.mode));
     $app.querySelector("#home").addEventListener("click", () => go("home"));
@@ -1380,7 +1473,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     `;
 
     $app.querySelectorAll("[data-auto]").forEach((b) => b.addEventListener("click", () => { data.settings.autoNext = +b.dataset.auto; persist(); renderAccount(); }));
-    $app.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => { data.sound = b.dataset.snd === "1"; persist(); renderHUD(); renderAccount(); if (data.sound) sfx.ok(0); }));
+    $app.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => { data.sound = b.dataset.snd === "1"; persist(); renderHUD(); renderAccount(); if (data.sound) sfx.toggle(); }));
     $app.querySelectorAll("[data-rate]").forEach((b) => b.addEventListener("click", () => { data.settings.voiceRate = +b.dataset.rate; persist(); renderAccount(); speak("Hello, this is the reading speed."); }));
     $app.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => { applyTheme(b.dataset.themeSet); renderAccount(); }));
     const on = (id, fn) => { const el = $app.querySelector(id); if (el) el.addEventListener("click", fn); };

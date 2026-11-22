@@ -10,6 +10,7 @@ const api = {
   enabled: !!cfg,
   ready: false,
   user: null,
+  deviceId: Math.random().toString(36).slice(2) + Date.now().toString(36),
   onAuth(fn) { listeners.add(fn); if (api.ready) fn(api.user); },
 };
 window.WUCloud = api;
@@ -76,13 +77,35 @@ if (cfg) {
         const d = snap.data();
         try { return JSON.parse(d.progress); } catch (e) { return null; }
       },
-      async save(progress) {
-        if (!api.user) return;
-        await F.setDoc(ref(api.user.uid), {
-          progress: JSON.stringify(progress),
-          name: api.user.name || "",
-          updatedAt: F.serverTimestamp(),
+      // บันทึกแบบรวมข้อมูล: อ่านของล่าสุดบนคลาวด์ใน transaction แล้วรวมกับของเครื่องนี้ก่อนเขียน
+      // จะได้ไม่เขียนทับความคืบหน้าที่อีกเครื่องเพิ่งบันทึกไว้
+      async save(progress, merge) {
+        if (!api.user) return progress;
+        const r = ref(api.user.uid);
+        return F.runTransaction(db, async (tx) => {
+          const snap = await tx.get(r);
+          let out = progress;
+          if (merge && snap.exists()) {
+            try { out = merge(progress, JSON.parse(snap.data().progress)); } catch (e) {}
+          }
+          tx.set(r, {
+            progress: JSON.stringify(out),
+            name: api.user.name || "",
+            device: api.deviceId,
+            updatedAt: F.serverTimestamp(),
+          });
+          return out;
         });
+      },
+      // ฟังการเปลี่ยนแปลงแบบเรียลไทม์ (จากเครื่องอื่น)
+      watch(fn) {
+        if (!api.user) return () => {};
+        return F.onSnapshot(ref(api.user.uid), (snap) => {
+          if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+          const d = snap.data();
+          if (d.device === api.deviceId) return;
+          try { fn(JSON.parse(d.progress)); } catch (e) {}
+        }, (e) => console.error("[WordUp] watch failed", e));
       },
     });
 

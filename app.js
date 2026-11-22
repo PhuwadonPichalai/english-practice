@@ -75,10 +75,43 @@
     if (!C || !C.user || !C.save) return;
     clearTimeout(cloudTimer);
     setSync("saving");
-    try { await C.save(data); setSync("saved"); }
+    try {
+      const before = JSON.stringify(data);
+      const merged = await C.save(JSON.parse(before), mergeProgress);
+      if (merged && JSON.stringify(merged) !== before) applyRemote(merged, true);
+      setSync("saved");
+    }
     catch (e) { console.error(e); setSync("error"); cloudTimer = setTimeout(cloudSaveNow, 15000); }
   }
   window.addEventListener("online", () => { if (sync.state === "error") cloudSaveNow(); });
+
+  // รับความคืบหน้าจากเครื่องอื่น แล้วรวมเข้ากับของเครื่องนี้
+  let unwatch = null;
+  function applyRemote(remote, merged) {
+    const before = JSON.stringify(data);
+    const next = merged ? remote : mergeProgress(data, remote);
+    if (JSON.stringify(next) === before) return;
+    fillData(next);
+    store.save(data);
+    refreshAfterSync();
+  }
+  function refreshAfterSync() {
+    if (typeof renderHUD === "function") renderHUD();
+    const busy = document.body.classList.contains("in-session") || document.body.classList.contains("sheet-open") ||
+      (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
+    if (!busy && typeof renderPage === "function") renderPage();
+  }
+  function startWatch() {
+    stopWatch();
+    const C = window.WUCloud;
+    if (C && C.user && C.watch) unwatch = C.watch((remote) => {
+      applyRemote(remote);
+      // ถ้าเครื่องนี้มีอะไรที่คลาวด์ยังไม่มี ให้ส่งกลับขึ้นไปด้วย
+      if (JSON.stringify(mergeProgress(remote, data)) !== JSON.stringify(mergeProgress(remote, remote))) scheduleCloudSave();
+      else setSync("saved");
+    });
+  }
+  function stopWatch() { if (unwatch) { unwatch(); unwatch = null; } }
 
   const hasProgress = (g) => !!g && ((g.totalAnswered || 0) > 0 || Object.keys(g.words || {}).length > 0);
   const ymd = (s) => { if (!s) return 0; const [y, m, d] = s.split("-").map(Number); return y * 10000 + m * 100 + d; };
@@ -1337,8 +1370,10 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       fillData(merged);
       store.save(data);
       if (cloudOk) await cloudSaveNow(); else setSync("error");
+      startWatch();
       if (authBusy) toast(mergedGuest ? "รวมความคืบหน้าในเครื่องนี้เข้ากับบัญชีแล้ว" : `ยินดีต้อนรับ ${user.name}`);
     } else {
+      stopWatch();
       try { localStorage.removeItem(LAST_UID); } catch (e) {}
       const wasUser = storeKey !== GUEST_KEY;
       if (wasUser) { storeKey = GUEST_KEY; fillData(readKey(GUEST_KEY)); }

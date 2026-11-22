@@ -460,6 +460,8 @@
       dlg.addEventListener("close", () => document.body.classList.remove("sheet-open"));
     }
     const draw = () => {
+      const prevBody = dlg.querySelector(".sheet-body");
+      const keepScroll = prevBody ? prevBody.scrollTop : 0;
       const speed = draft.mode === "speed";
       const n = poolFor(draft.level).length;
       dlg.innerHTML = `
@@ -502,10 +504,11 @@
             <button class="btn big-start" id="goStart">${PLAY.replace(/34/g, "18")} เริ่มฝึก</button>
           </div>
         </div>`;
+      dlg.querySelector(".sheet-body").scrollTop = keepScroll;
       dlg.querySelector("#closeSetup").addEventListener("click", () => dlg.close());
-      dlg.querySelectorAll("[data-pl]").forEach((b) => b.addEventListener("click", () => { draft.level = b.dataset.pl; draw(); dlg.querySelector(`[data-pl="${draft.level}"]`).focus(); }));
-      dlg.querySelectorAll("[data-pm]").forEach((b) => b.addEventListener("click", () => { draft.mode = b.dataset.pm; draw(); dlg.querySelector(`[data-pm="${draft.mode}"]`).focus(); }));
-      dlg.querySelectorAll("[data-pc]").forEach((b) => b.addEventListener("click", () => { draft.count = +b.dataset.pc; draw(); dlg.querySelector(`[data-pc="${draft.count}"]`).focus(); }));
+      dlg.querySelectorAll("[data-pl]").forEach((b) => b.addEventListener("click", () => { draft.level = b.dataset.pl; draw(); dlg.querySelector(`[data-pl="${draft.level}"]`).focus({ preventScroll: true }); }));
+      dlg.querySelectorAll("[data-pm]").forEach((b) => b.addEventListener("click", () => { draft.mode = b.dataset.pm; draw(); dlg.querySelector(`[data-pm="${draft.mode}"]`).focus({ preventScroll: true }); }));
+      dlg.querySelectorAll("[data-pc]").forEach((b) => b.addEventListener("click", () => { draft.count = +b.dataset.pc; draw(); dlg.querySelector(`[data-pc="${draft.count}"]`).focus({ preventScroll: true }); }));
       dlg.querySelector("#goStart").addEventListener("click", () => {
         data.settings.level = draft.level;
         data.settings.count = draft.count;
@@ -517,7 +520,8 @@
     draw();
     document.body.classList.add("sheet-open");
     if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
-    dlg.querySelector("#goStart").focus();
+    dlg.querySelector(".sheet-body").scrollTop = 0;
+    dlg.querySelector("#goStart").focus({ preventScroll: true });
   }
 
   // ---------------- page: progress ----------------

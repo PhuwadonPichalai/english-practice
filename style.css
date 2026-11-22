@@ -1101,3 +1101,15 @@ body.in-session #app.enter > * { animation-duration: .38s; animation-delay: 0s; 
   #app.enter > *, .sheet[open], .sheet.closing, .sheet[open]::backdrop, .feedback.show, .word-item[open] .word-more, .option.wrong { animation: none !important; }
   .flash-inner { transition: none; }
 }
+
+/* account button: status dot sits on top of the avatar (not clipped), top-right like a badge */
+.acct { overflow: visible; }
+.acct img, .acct .initial { border-radius: 50%; overflow: hidden; }
+.acct.signed-in::after {
+  top: -2px; right: -2px; bottom: auto;
+  width: 12px; height: 12px; z-index: 2;
+  border: 2px solid var(--paper);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+  transition: background-color .3s var(--ease-out);
+}
+html:not([data-theme="dark"]) .acct.signed-in::after { border-color: #fff; }

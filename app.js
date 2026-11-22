@@ -31,21 +31,78 @@
     });
   });
 
-  // ---------------- storage ----------------
-  const KEY = "wu-progress-v1";
-  const store = {
-    load() {
-      try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
-    },
-    save(d) {
-      try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {}
-    },
-  };
-  const data = Object.assign(
-    { words: {}, best: {}, streak: { last: null, count: 0 }, settings: { level: "A1", count: 10, learnCount: 5 }, totalAnswered: 0, xp: 0, daily: null, badges: [], sound: true, bestCombo: 0 },
-    store.load()
-  );
-  const persist = () => store.save(data);
+  // ---------------- storage (แยกตามบัญชี) ----------------
+  const GUEST_KEY = "wu-progress-v1";
+  const LAST_UID = "wu-last-uid";
+  const readKey = (k) => { try { return JSON.parse(localStorage.getItem(k)) || null; } catch (e) { return null; } };
+  const writeKey = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+  const DEFAULTS = () => ({ words: {}, best: {}, streak: { last: null, count: 0 }, settings: { level: "A1", count: 10, learnCount: 5, autoNext: 3 }, totalAnswered: 0, xp: 0, daily: null, badges: [], sound: true, bestCombo: 0 });
+  const cloudOn = () => !!(window.WU_FIREBASE_CONFIG);
+  let storeKey = GUEST_KEY;
+  // ถ้าเคยล็อกอินไว้ ให้โหลดข้อมูลที่แคชของบัญชีนั้นก่อน ระหว่างรอยืนยันตัวตน
+  try { const u = localStorage.getItem(LAST_UID); if (u && cloudOn()) storeKey = "wu-progress-u-" + u; } catch (e) {}
+  const data = DEFAULTS();
+  function fillData(obj) {
+    Object.keys(data).forEach((k) => delete data[k]);
+    const d = DEFAULTS();
+    Object.assign(data, d, obj || {});
+    data.settings = Object.assign(d.settings, (obj && obj.settings) || {});
+    migrate();
+  }
+  const store = { save(d) { writeKey(storeKey, d); } };
+  const persist = () => { store.save(data); scheduleCloudSave(); };
+  let cloudTimer = null;
+  const sync = { state: "idle" };
+  function setSync(state) {
+    sync.state = state; sync.at = Date.now();
+    document.querySelectorAll("[data-sync]").forEach((el) => { el.textContent = syncText(); el.dataset.sync = state; });
+    const ab = document.getElementById("accountBtn");
+    if (ab) ab.dataset.sync = state;
+  }
+  function syncText() {
+    return { idle: "", loading: "กำลังโหลดความคืบหน้า…", saving: "กำลังบันทึก…", saved: "บันทึกลงบัญชีแล้ว", error: "บันทึกไม่สำเร็จ จะลองใหม่อัตโนมัติ" }[sync.state] || "";
+  }
+  function scheduleCloudSave() {
+    const C = window.WUCloud;
+    if (!C || !C.user || !C.save) return;
+    clearTimeout(cloudTimer);
+    setSync("saving");
+    cloudTimer = setTimeout(cloudSaveNow, 1200);
+  }
+  async function cloudSaveNow() {
+    const C = window.WUCloud;
+    if (!C || !C.user || !C.save) return;
+    clearTimeout(cloudTimer);
+    setSync("saving");
+    try { await C.save(data); setSync("saved"); }
+    catch (e) { console.error(e); setSync("error"); cloudTimer = setTimeout(cloudSaveNow, 15000); }
+  }
+  window.addEventListener("online", () => { if (sync.state === "error") cloudSaveNow(); });
+
+  const hasProgress = (g) => !!g && ((g.totalAnswered || 0) > 0 || Object.keys(g.words || {}).length > 0);
+  const ymd = (s) => { if (!s) return 0; const [y, m, d] = s.split("-").map(Number); return y * 10000 + m * 100 + d; };
+  // รวมความคืบหน้า 2 ชุดเข้าด้วยกัน โดยเก็บค่าที่ดีกว่าของแต่ละอย่าง
+  function mergeProgress(a, b) {
+    a = a || {}; b = b || {};
+    const out = Object.assign(DEFAULTS(), a);
+    out.settings = Object.assign(DEFAULTS().settings, b.settings || {}, a.settings || {});
+    const words = Object.assign({}, a.words || {});
+    Object.entries(b.words || {}).forEach(([k, v]) => {
+      const o = words[k];
+      if (!o || (v.r || 0) + (v.x || 0) > (o.r || 0) + (o.x || 0)) words[k] = v;
+    });
+    out.words = words;
+    out.best = Object.assign({}, a.best || {});
+    Object.entries(b.best || {}).forEach(([k, v]) => { out.best[k] = Math.max(out.best[k] ?? -1, v); });
+    ["xp", "totalAnswered", "bestCombo"].forEach((k) => { out[k] = Math.max(a[k] || 0, b[k] || 0); });
+    out.badges = [...new Set([...(a.badges || []), ...(b.badges || [])])];
+    const sa = a.streak || {}, sb = b.streak || {};
+    out.streak = ymd(sb.last) > ymd(sa.last) ? sb : ymd(sa.last) > ymd(sb.last) ? sa : { last: sa.last || sb.last || null, count: Math.max(sa.count || 0, sb.count || 0) };
+    const da = a.daily, db = b.daily;
+    out.daily = da && db && da.date === db.date ? { date: da.date, count: Math.max(da.count, db.count) } : (ymd(db && db.date) > ymd(da && da.date) ? db : da) || null;
+    out.sound = a.sound ?? b.sound ?? true;
+    return out;
+  }
 
   // ---------------- spaced repetition (Leitner boxes) ----------------
   // box 0 = ต้องทบทวนวันนี้, 1..6 = เว้นช่วงทบทวนนานขึ้นเรื่อยๆ
@@ -53,13 +110,16 @@
   const MASTER_BOX = 4;
   const dayNum = (d = new Date()) => Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
   // ย้ายข้อมูลรุ่นเก่า (มีแค่ r/x) ให้เข้าระบบทบทวน
-  Object.keys(data.words).forEach((k) => {
-    const st = data.words[k];
-    if (st.box == null) {
-      st.box = st.r >= 3 && st.r >= st.x * 2 ? 3 : Math.min(st.r || 0, 2);
-      st.due = dayNum();
-    }
-  });
+  function migrate() {
+    Object.keys(data.words || {}).forEach((k) => {
+      const st = data.words[k];
+      if (st.box == null) {
+        st.box = st.r >= 3 && st.r >= st.x * 2 ? 3 : Math.min(st.r || 0, 2);
+        st.due = dayNum();
+      }
+    });
+  }
+  fillData(readKey(storeKey) || (storeKey !== GUEST_KEY ? null : null));
   function wordStat(w) { return data.words[w] || { r: 0, x: 0 }; }
   function status(w) {
     const s = data.words[w];
@@ -310,13 +370,14 @@
   document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
 
   // ---------------- routing ----------------
-  const PAGES = ["home", "practice", "library", "progress"];
+  const PAGES = ["home", "practice", "library", "progress", "account"];
   function currentPage() {
     const h = location.hash.replace("#", "");
     return PAGES.includes(h) ? h : "home";
   }
   function stopSession() {
     keyHandler = null;
+    clearAutoNext();
     if (S && S.timer) { clearInterval(S.timer); S.timer = null; }
     if (canSpeak) speechSynthesis.cancel();
   }
@@ -331,7 +392,8 @@
         if (n.dataset.go === page) n.setAttribute("aria-current", "page"); else n.removeAttribute("aria-current");
       }
     });
-    ({ home: renderHome, practice: renderPractice, library: renderLibrary, progress: renderProgress })[page]();
+    ({ home: renderHome, practice: renderPractice, library: renderLibrary, progress: renderProgress, account: renderAccount })[page]();
+    document.getElementById("accountBtn").classList.toggle("active", page === "account");
     renderHUD();
     window.scrollTo(0, 0);
   }
@@ -939,11 +1001,41 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     $app.querySelector("#nextRow").innerHTML = `<button class="btn" id="nextBtn">${last ? "ดูผลลัพธ์" : "ข้อถัดไป"}</button>`;
     const nb = $app.querySelector("#nextBtn");
     nb.addEventListener("click", next);
+    const secs = data.settings.autoNext ?? 3;
+    if (secs > 0) startAutoNext(ok ? secs : secs + 2, last);
     if (S.mode !== "spell") nb.focus({ preventScroll: true });
     if (S.mode === "en2th" || S.mode === "listen" || !ok) speak(w.word);
   }
 
+  // ----- นับถอยหลังไปข้อถัดไปอัตโนมัติ -----
+  let autoT = null, autoI = null;
+  function clearAutoNext() { clearTimeout(autoT); clearInterval(autoI); autoT = autoI = null; }
+  function startAutoNext(sec, last) {
+    clearAutoNext();
+    const nb = $app.querySelector("#nextBtn");
+    const row = $app.querySelector("#nextRow");
+    if (!nb || !row) return;
+    const label = last ? "ดูผลลัพธ์" : "ข้อถัดไป";
+    let left = sec;
+    nb.classList.add("counting");
+    nb.style.setProperty("--cd", sec + "s");
+    nb.innerHTML = `<span class="cd-fill"></span><span class="cd-label">${label} <span class="cd-num">${left}</span></span>`;
+    const hold = document.createElement("button");
+    hold.className = "btn ghost"; hold.id = "holdBtn"; hold.textContent = "หยุดรอ";
+    row.insertBefore(hold, nb);
+    hold.addEventListener("click", () => {
+      clearAutoNext();
+      nb.classList.remove("counting");
+      nb.textContent = label;
+      hold.remove();
+      nb.focus({ preventScroll: true });
+    });
+    autoI = setInterval(() => { left--; const n = nb.querySelector(".cd-num"); if (n) n.textContent = Math.max(left, 0); }, 1000);
+    autoT = setTimeout(() => { clearAutoNext(); if (S && S.answered && $app.contains(nb)) next(); }, sec * 1000);
+  }
+
   function next() {
+    clearAutoNext();
     S.i++;
     if (S.mode === "speed") {
       if (S.i >= S.words.length) { S.words = shuffle(S.words); S.i = 0; }
@@ -1111,6 +1203,161 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     window.scrollTo(0, 0);
   }
 
+  // ---------------- toast ----------------
+  function toast(msg) {
+    const t = document.createElement("div");
+    t.className = "toast"; t.setAttribute("role", "status"); t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.classList.add("out"), 3200);
+    setTimeout(() => t.remove(), 3700);
+  }
+
+  // ---------------- account: auth state ----------------
+  const PERSON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+  function avatarHTML(u, size = 28) {
+    if (!u) return PERSON;
+    if (u.photo) return `<img src="${esc(u.photo)}" alt="" width="${size}" height="${size}" referrerpolicy="no-referrer">`;
+    return `<span class="initial">${esc((u.name || "?").trim().charAt(0).toUpperCase())}</span>`;
+  }
+  function updateAccountButton() {
+    const b = document.getElementById("accountBtn");
+    const u = window.WUCloud && window.WUCloud.user;
+    b.innerHTML = avatarHTML(u);
+    b.classList.toggle("signed-in", !!u);
+    b.title = u ? `บัญชี: ${u.name}` : "บัญชีและการตั้งค่า";
+  }
+  let authBusy = false;
+  async function onAuthChange(user) {
+    if (user) {
+      const userKey = "wu-progress-u-" + user.uid;
+      setSync("loading");
+      let cloud = null, cloudOk = true;
+      try { cloud = await window.WUCloud.load(); } catch (e) { cloudOk = false; console.error(e); }
+      let merged = mergeProgress(cloud || {}, readKey(userKey) || {});
+      const guest = readKey(GUEST_KEY);
+      const mergedGuest = hasProgress(guest);
+      if (mergedGuest) { merged = mergeProgress(merged, guest); try { localStorage.removeItem(GUEST_KEY); } catch (e) {} }
+      storeKey = userKey;
+      try { localStorage.setItem(LAST_UID, user.uid); } catch (e) {}
+      fillData(merged);
+      store.save(data);
+      if (cloudOk) await cloudSaveNow(); else setSync("error");
+      if (authBusy) toast(mergedGuest ? "รวมความคืบหน้าในเครื่องนี้เข้ากับบัญชีแล้ว" : `ยินดีต้อนรับ ${user.name}`);
+    } else {
+      try { localStorage.removeItem(LAST_UID); } catch (e) {}
+      const wasUser = storeKey !== GUEST_KEY;
+      if (wasUser) { storeKey = GUEST_KEY; fillData(readKey(GUEST_KEY)); }
+      setSync("idle");
+      if (!wasUser && currentPage() !== "account") { authBusy = false; updateAccountButton(); return; }
+    }
+    authBusy = false;
+    updateAccountButton();
+    renderHUD();
+    if (!document.body.classList.contains("in-session") && !$app.querySelector(".result")) renderPage();
+  }
+
+  // ---------------- page: account ----------------
+  let authTab = "signin";
+  function renderAccount() {
+    const C = window.WUCloud || { enabled: false };
+    const u = C.user;
+    const autoNext = data.settings.autoNext ?? 3;
+    let accountHTML;
+    if (!cloudOn() || C.loadError) {
+      accountHTML = `<div class="notice">${C.loadError ? "โหลดระบบบัญชีไม่สำเร็จ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วรีเฟรชหน้าเว็บ" : "ระบบบัญชียังไม่ได้เปิดใช้งาน ตอนนี้ความคืบหน้าถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น"}</div>`;
+    } else if (!C.ready) {
+      accountHTML = `<div class="notice">กำลังตรวจสอบบัญชี…</div>`;
+    } else if (u) {
+      accountHTML = `
+        <div class="profile">
+          <span class="avatar big">${avatarHTML(u, 64)}</span>
+          <div><b>${esc(u.name)}</b><span>${esc(u.email)}</span><span class="sync-line" data-sync="${sync.state}">${esc(syncText())}</span></div>
+        </div>
+        <p class="muted-p">ความคืบหน้าทั้งหมดถูกบันทึกในบัญชีนี้ เข้าสู่ระบบจากเครื่องไหนก็เล่นต่อได้</p>
+        <div class="row-btns">
+          <button class="btn ghost" id="syncNow">บันทึกตอนนี้</button>
+          <button class="btn ghost" id="signOut">ออกจากระบบ</button>
+        </div>`;
+    } else {
+      accountHTML = `
+        <p class="muted-p">เข้าสู่ระบบเพื่อบันทึกความคืบหน้าไว้ในบัญชี แล้วเล่นต่อได้ทุกเครื่อง ความคืบหน้าที่เล่นไว้ในเครื่องนี้จะถูกรวมเข้าบัญชีให้อัตโนมัติ</p>
+        <button class="btn google-btn" id="google"><svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg> เข้าสู่ระบบด้วย Google</button>
+        <div class="or"><span>หรือใช้อีเมล</span></div>
+        <div class="seg auth-tabs" role="tablist">
+          <button class="${authTab === "signin" ? "active" : ""}" data-tab="signin" role="tab">เข้าสู่ระบบ</button>
+          <button class="${authTab === "signup" ? "active" : ""}" data-tab="signup" role="tab">สมัครสมาชิก</button>
+        </div>
+        <form class="auth-form" id="authForm" novalidate>
+          ${authTab === "signup" ? `<label>ชื่อที่แสดง<input class="field" name="name" autocomplete="nickname" maxlength="40" placeholder="เช่น ดอน"></label>` : ""}
+          <label>อีเมล<input class="field" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+          <label>รหัสผ่าน<input class="field" name="pass" type="password" autocomplete="${authTab === "signup" ? "new-password" : "current-password"}" required minlength="6" placeholder="อย่างน้อย 6 ตัวอักษร"></label>
+          <p class="form-msg" id="formMsg" role="alert"></p>
+          <button class="btn" type="submit">${authTab === "signup" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"}</button>
+          ${authTab === "signin" ? `<button type="button" class="link-btn" id="forgot">ลืมรหัสผ่าน</button>` : ""}
+        </form>`;
+    }
+
+    $app.innerHTML = `
+      <h1 class="page-title">บัญชี</h1>
+      <p class="page-sub">${u ? "จัดการบัญชีและการตั้งค่าการเล่น" : "เข้าสู่ระบบเพื่อเซฟความคืบหน้า และปรับการตั้งค่าการเล่น"}</p>
+      <section class="section account-card">${accountHTML}</section>
+
+      <section class="section">
+        <div class="section-head"><div><h2>การตั้งค่า</h2></div></div>
+        <div class="setting">
+          <div><b>นับถอยหลังไปข้อถัดไป</b><span>หลังตอบแล้วจะไปข้อถัดไปเองเมื่อครบเวลา ถ้าตอบผิดจะได้เวลาอ่านเฉลยเพิ่มอีก 2 วินาที</span></div>
+          <div class="seg" role="group" aria-label="นับถอยหลัง">${[[0, "ปิด"], [2, "2 วิ"], [3, "3 วิ"], [5, "5 วิ"]].map(([v, t]) => `<button class="${autoNext === v ? "active" : ""}" data-auto="${v}">${t}</button>`).join("")}</div>
+        </div>
+        <div class="setting">
+          <div><b>เสียงเอฟเฟกต์</b><span>เสียงตอนตอบถูก ตอบผิด และเลเวลอัป</span></div>
+          <div class="seg" role="group" aria-label="เสียงเอฟเฟกต์"><button class="${data.sound ? "active" : ""}" data-snd="1">เปิด</button><button class="${!data.sound ? "active" : ""}" data-snd="0">ปิด</button></div>
+        </div>
+        <div class="setting">
+          <div><b>ธีม</b><span>สว่างหรือมืด</span></div>
+          <div class="seg" role="group" aria-label="ธีม"><button class="${document.documentElement.dataset.theme !== "dark" ? "active" : ""}" data-theme-set="light">สว่าง</button><button class="${document.documentElement.dataset.theme === "dark" ? "active" : ""}" data-theme-set="dark">มืด</button></div>
+        </div>
+      </section>
+    `;
+
+    $app.querySelectorAll("[data-auto]").forEach((b) => b.addEventListener("click", () => { data.settings.autoNext = +b.dataset.auto; persist(); renderAccount(); }));
+    $app.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => { data.sound = b.dataset.snd === "1"; persist(); renderHUD(); renderAccount(); }));
+    $app.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => {
+      document.documentElement.dataset.theme = b.dataset.themeSet;
+      try { localStorage.setItem("wu-theme", b.dataset.themeSet); } catch (e) {}
+      renderAccount();
+    }));
+    const on = (id, fn) => { const el = $app.querySelector(id); if (el) el.addEventListener("click", fn); };
+    on("#signOut", async () => { await C.signOut(); toast("ออกจากระบบแล้ว"); });
+    on("#syncNow", () => cloudSaveNow());
+    on("#google", async (e) => {
+      e.currentTarget.disabled = true; authBusy = true;
+      const r = await C.signInGoogle();
+      if (!r.ok) { authBusy = false; showFormMsg(r.error); const g = $app.querySelector("#google"); if (g) g.disabled = false; }
+    });
+    $app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { authTab = b.dataset.tab; renderAccount(); }));
+    on("#forgot", async () => {
+      const email = $app.querySelector('[name="email"]').value.trim();
+      if (!email) return showFormMsg("ใส่อีเมลก่อน แล้วกด \"ลืมรหัสผ่าน\" อีกครั้ง");
+      const r = await C.resetPassword(email);
+      showFormMsg(r.ok ? "ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่อีเมลแล้ว" : r.error, r.ok);
+    });
+    const form = $app.querySelector("#authForm");
+    if (form) form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = new FormData(form);
+      const email = String(f.get("email") || "").trim(), pass = String(f.get("pass") || "");
+      if (!email || !pass) return showFormMsg("กรุณาใส่อีเมลและรหัสผ่าน");
+      const btn = form.querySelector('[type="submit"]');
+      btn.disabled = true; authBusy = true;
+      const r = authTab === "signup" ? await C.signUpEmail(String(f.get("name") || "").trim(), email, pass) : await C.signInEmail(email, pass);
+      if (!r.ok) { authBusy = false; btn.disabled = false; showFormMsg(r.error); }
+    });
+  }
+  function showFormMsg(msg, good) {
+    const el = $app.querySelector("#formMsg");
+    if (el) { el.textContent = msg; el.classList.toggle("good", !!good); } else toast(msg);
+  }
+
   // ---------------- library ----------------
   let libLevel = null, libQuery = "", libFilter = "all";
   function renderLibrary() {
@@ -1172,6 +1419,9 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
   }
 
   // ---------------- boot ----------------
+  updateAccountButton();
   renderHUD();
+  const hookCloud = () => window.WUCloud.onAuth(onAuthChange);
+  if (window.WUCloud) hookCloud(); else window.addEventListener("wu-cloud-ready", hookCloud, { once: true });
   renderPage();
 })();

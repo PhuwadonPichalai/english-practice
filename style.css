@@ -925,3 +925,93 @@ html:not([data-theme="dark"]) .hud .xpbar { width: 64px; height: 8px; }
 html:not([data-theme="dark"]) .hud { border-color: #d3d7de; }
 html:not([data-theme="dark"]) .icon-btn, html:not([data-theme="dark"]) .acct, html:not([data-theme="dark"]) .back { border-color: #d3d7de; }
 html:not([data-theme="dark"]) :is(.card-soft, .learn-card, .profile-hero) { border-top-color: var(--hl) !important; }
+
+/* ================= dark theme: sheets under a desk lamp =================
+   Mirrors the light theme: a near-black desk, slightly raised charcoal sheets
+   with a hairline top light, same highlighter accents. */
+[data-theme="dark"] {
+  --bg: #0e0f11;
+  --paper: #17181b;
+  --soft: #222428;
+  --line: #2c2f35;
+  --ink: #eceae4;
+  --muted: #9b9a94;
+  --ring-track: #2a2d33;
+  --card-line: #33363d;
+  --sh-1: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 1px 2px rgba(0, 0, 0, .5), 0 4px 14px rgba(0, 0, 0, .25);
+  --sh-2: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 4px 8px rgba(0, 0, 0, .45), 0 14px 32px -8px rgba(0, 0, 0, .6);
+}
+[data-theme="dark"] body {
+  background:
+    radial-gradient(1200px 420px at 50% -120px, #1c1e22 0%, rgba(28, 30, 34, 0) 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+[data-theme="dark"] .topbar {
+  background: rgba(23, 24, 27, .86);
+  border-bottom-color: transparent;
+  box-shadow: 0 1px 0 var(--line), 0 8px 24px -14px rgba(0, 0, 0, .8);
+}
+[data-theme="dark"] .navlink.active { background: var(--ink); color: #141517; }
+[data-theme="dark"] :is(.icon-btn, .hud, .acct, .back) { background: var(--paper); border-color: var(--card-line); box-shadow: var(--sh-1); }
+[data-theme="dark"] .tabbar { background: rgba(23, 24, 27, .94); box-shadow: 0 -8px 24px -14px rgba(0, 0, 0, .8); }
+
+[data-theme="dark"] :is(.goal, .today-item, .study-btn, .quick-btn:not(.primary):not(.challenge-btn), .card, .card-soft, .learn-card,
+  .set-group, .auth-box, .auth-pitch, .profile-hero, .step, .badge.on, .flash-front, .flash-back, .opt) {
+  background: var(--paper);
+  border: 1px solid var(--card-line);
+  box-shadow: var(--sh-1);
+}
+[data-theme="dark"] :is(.mode-list, .word-list) {
+  background: var(--paper); border: 1px solid var(--card-line); border-radius: 20px;
+  box-shadow: var(--sh-1); overflow: hidden;
+}
+[data-theme="dark"] .mode-row { padding: 16px 18px; }
+[data-theme="dark"] .mode-row:last-child,
+[data-theme="dark"] .word-list > :last-child,
+[data-theme="dark"] .word-list > :last-child > summary { border-bottom: 0; }
+[data-theme="dark"] .word-row { padding: 12px 18px; }
+[data-theme="dark"] .mode-row:hover { background: #1c1e22; }
+[data-theme="dark"] .word-item[open] > summary, [data-theme="dark"] .word-more { background: #1c1e22; }
+[data-theme="dark"] .badge:not(.on) { background: rgba(23, 24, 27, .5); }
+
+[data-theme="dark"] :is(.quick-btn, .study-btn:not(:disabled)) { transition: transform .15s, box-shadow .15s, border-color .15s; }
+[data-theme="dark"] :is(.quick-btn, .study-btn:not(:disabled)):hover { box-shadow: var(--sh-2); border-color: #454952; }
+[data-theme="dark"] .quick-btn.primary {
+  background: linear-gradient(180deg, #f4f2ec, #dcd9d1); border-color: #dcd9d1; color: #141517;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset, 0 10px 26px -10px rgba(0, 0, 0, .8);
+}
+[data-theme="dark"] .quick-btn.primary .quick-icon { background: rgba(0, 0, 0, .08); }
+[data-theme="dark"] .quick-btn.challenge-btn {
+  background: var(--hl); border-color: #e0c235;
+  box-shadow: 0 10px 26px -10px rgba(242, 214, 75, .45);
+}
+[data-theme="dark"] .study-btn.review.has-due { border: 2px solid var(--ink); }
+
+[data-theme="dark"] .goal { position: relative; overflow: hidden; }
+[data-theme="dark"] .goal::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--hl); }
+[data-theme="dark"] .card-soft {
+  position: relative; overflow: hidden;
+  background: radial-gradient(420px 220px at 100% 0%, rgba(242, 214, 75, .10) 0%, rgba(242, 214, 75, 0) 70%), var(--paper);
+}
+[data-theme="dark"] :is(.card-soft, .learn-card, .profile-hero) { border-top: 6px solid var(--hl) !important; }
+[data-theme="dark"] :is(.card-soft, .learn-card) .btn.ghost { background: var(--soft); border-color: var(--card-line); }
+[data-theme="dark"] :is(.ph-stats > div, .sync-pill) { background: var(--soft); }
+[data-theme="dark"] .ph-actions .btn { background: var(--soft); }
+[data-theme="dark"] .auth-pitch { background: linear-gradient(160deg, rgba(242, 214, 75, .10) 0%, var(--paper) 55%); }
+
+[data-theme="dark"] :is(.field, .search, .filter) { background: #111215; border-color: var(--card-line); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .4); }
+[data-theme="dark"] :is(.field, .search):focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(242, 214, 75, .35); }
+[data-theme="dark"] .btn.ghost { background: var(--paper); border-color: var(--card-line); }
+[data-theme="dark"] .opt.on { background: rgba(242, 214, 75, .10); box-shadow: 0 0 0 3px rgba(242, 214, 75, .25); }
+[data-theme="dark"] .sheet { background: var(--paper); box-shadow: 0 30px 90px -20px rgba(0, 0, 0, .9); border: 1px solid var(--card-line); }
+
+[data-theme="dark"] :is(.xpbar, .ph-level .xpbar.big, .progress) {
+  background: #33363d;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5);
+}
+[data-theme="dark"] .xpbar > span, [data-theme="dark"] .progress > span {
+  background: linear-gradient(90deg, #d9b400, #f2d64b);
+}
+[data-theme="dark"] .xpbar.big { height: 10px; }
+[data-theme="dark"] .hud .xpbar { width: 64px; height: 8px; }

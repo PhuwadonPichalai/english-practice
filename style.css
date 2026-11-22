@@ -1190,3 +1190,7 @@ html:not([data-theme="dark"]) .u-bar { background: #e3e6eb; }
   .units .section-head .seg { width: 100%; }
   .units .section-head .seg button { flex: 1; }
 }
+
+/* perk icons: `.perks span` (muted) was overriding the icon colour */
+.perks .perk-ic { color: var(--ac-ink); }
+.perks .perk-ic svg { stroke-width: 2.2; }

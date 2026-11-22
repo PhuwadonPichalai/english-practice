@@ -26,8 +26,8 @@
   // ---------------- data ----------------
   const ALL_WORDS = [];
   Object.keys(window.WORDS).forEach((level) => {
-    window.WORDS[level].forEach(([word, pos, th, ex]) => {
-      ALL_WORDS.push({ word, pos, th, ex, level });
+    window.WORDS[level].forEach(([word, pos, th, ex, exTh]) => {
+      ALL_WORDS.push({ word, pos, th, ex, exTh: exTh || "", level });
     });
   });
 
@@ -42,21 +42,50 @@
     },
   };
   const data = Object.assign(
-    { words: {}, best: {}, streak: { last: null, count: 0 }, settings: { level: "A1", count: 10 }, totalAnswered: 0, xp: 0, daily: null, badges: [], sound: true, bestCombo: 0 },
+    { words: {}, best: {}, streak: { last: null, count: 0 }, settings: { level: "A1", count: 10, learnCount: 5 }, totalAnswered: 0, xp: 0, daily: null, badges: [], sound: true, bestCombo: 0 },
     store.load()
   );
   const persist = () => store.save(data);
 
+  // ---------------- spaced repetition (Leitner boxes) ----------------
+  // box 0 = ต้องทบทวนวันนี้, 1..6 = เว้นช่วงทบทวนนานขึ้นเรื่อยๆ
+  const INTERVALS = [0, 1, 3, 7, 14, 30, 60];
+  const MASTER_BOX = 4;
+  const dayNum = (d = new Date()) => Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
+  // ย้ายข้อมูลรุ่นเก่า (มีแค่ r/x) ให้เข้าระบบทบทวน
+  Object.keys(data.words).forEach((k) => {
+    const st = data.words[k];
+    if (st.box == null) {
+      st.box = st.r >= 3 && st.r >= st.x * 2 ? 3 : Math.min(st.r || 0, 2);
+      st.due = dayNum();
+    }
+  });
   function wordStat(w) { return data.words[w] || { r: 0, x: 0 }; }
   function status(w) {
     const s = data.words[w];
     if (!s) return "new";
-    if (s.r >= 3 && s.r >= s.x * 2) return "mastered";
-    return "learning";
+    return s.box >= MASTER_BOX ? "mastered" : "learning";
+  }
+  const isDue = (w) => { const s = data.words[w]; return !!s && s.due <= dayNum(); };
+  const dueWords = () => ALL_WORDS.filter((w) => isDue(w.word));
+  const learnedCount = () => Object.keys(data.words).length;
+  function nextReviewText(w) {
+    const s = data.words[w];
+    if (!s) return "";
+    const d = s.due - dayNum();
+    return d <= 0 ? "ทบทวนวันนี้" : d === 1 ? "ทบทวนพรุ่งนี้" : `ทบทวนอีก ${d} วัน`;
   }
   function record(w, ok) {
-    const s = data.words[w] || { r: 0, x: 0 };
-    ok ? s.r++ : s.x++;
+    const now = dayNum();
+    const s = data.words[w] || { r: 0, x: 0, box: 0, due: now };
+    if (ok) {
+      s.r++;
+      // เลื่อนขั้นเฉพาะตอนถึงเวลาทบทวน ตอบถูกซ้ำในวันเดียวกันไม่นับเพิ่ม
+      if (s.due <= now) { s.box = Math.min(s.box + 1, INTERVALS.length - 1); s.due = now + INTERVALS[s.box]; }
+    } else {
+      s.x++;
+      s.box = 0; s.due = now;
+    }
     data.words[w] = s;
     data.totalAnswered = (data.totalAnswered || 0) + 1;
     if (!data.daily || data.daily.date !== today()) data.daily = { date: today(), count: 0 };
@@ -93,8 +122,9 @@
   function pickWords(level, n) {
     const pool = poolFor(level);
     const scored = pool.map((w) => {
-      const s = wordStat(w.word);
-      return { w, score: s.r - s.x * 2 + Math.random() * 3 };
+      const s = data.words[w.word];
+      const score = !s ? 4 : (isDue(w.word) ? -6 : 0) + s.box * 2 - s.x + Math.random() * 3;
+      return { w, score };
     });
     scored.sort((a, b) => a.score - b.score);
     return shuffle(scored.slice(0, Math.min(n, pool.length)).map((x) => x.w));
@@ -327,8 +357,10 @@
   const SPK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>';
   const CLOCK = '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>';
   const PLAY = '<svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
+const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C10 5 7 4.5 3 5v13c4-.5 7 0 9 1.5 2-1.5 5-2 9-1.5V5c-4-.5-7 0-9 1.5z"/><path d="M12 6.5V19"/></svg>';
+  const REPEAT = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>';
   const levelName = (id) => LEVELS.find((l) => l.id === id).name;
-  const modeTitle = (id) => (id === "speed" ? "ท้าทาย 60 วินาที" : (MODES.find((m) => m.id === id) || MODES[1]).title);
+  const modeTitle = (id) => ({ speed: "ท้าทาย 60 วินาที", learn: "เรียนคำใหม่", review: "ทบทวนคำ" }[id] || (MODES.find((m) => m.id === id) || MODES[1]).title);
   const masteredIn = (id) => poolFor(id).filter((x) => status(x.word) === "mastered").length;
   const levelPct = (id) => Math.round((masteredIn(id) / poolFor(id).length) * 100);
 
@@ -350,8 +382,31 @@
         </div>
         <div class="today-item"><b>Lv ${li.lv}</b><span>${li.into} / ${li.need} XP</span><span class="xpbar big"><span style="width:${(li.into / li.need) * 100}%"></span></span></div>
         <div class="today-item"><b>${streak} <small>วัน</small></b><span>ฝึกต่อเนื่อง</span></div>
-        <div class="today-item"><b>${mastered} <small>/ ${ALL_WORDS.length}</small></b><span>คำที่จำได้แล้ว</span></div>
+        <div class="today-item"><b>${learnedCount()} <small>/ ${ALL_WORDS.length}</small></b><span>คำที่เรียนแล้ว</span></div>
       </section>`;
+  }
+
+  function studyBlock() {
+    const due = dueWords().length;
+    const level = data.settings.level;
+    const fresh = poolFor(level).filter((w) => !data.words[w.word]).length;
+    return `<section class="study">
+        <button class="study-btn review ${due ? "has-due" : ""}" id="reviewBtn" ${due ? "" : "disabled"}>
+          <span class="quick-icon">${REPEAT}</span>
+          <span><b>ทบทวนวันนี้${due ? ` <em class="due-count">${due}</em>` : ""}</b>
+          <span>${due ? "คำที่ถึงเวลาทบทวนแล้ว ทบทวนก่อนจะลืม" : learnedCount() ? "ทบทวนครบแล้ว พรุ่งนี้ค่อยกลับมาใหม่" : "เรียนคำใหม่ก่อน แล้วคำจะมารอให้ทบทวนที่นี่"}</span></span>
+        </button>
+        <button class="study-btn learn" id="learnBtn">
+          <span class="quick-icon">${BOOK}</span>
+          <span><b>เรียนคำใหม่</b><span>${fresh ? `ระดับ ${levelName(level)} เหลือคำใหม่อีก ${fresh} คำ` : `เรียนครบทุกคำในระดับ ${levelName(level)} แล้ว ลองเลือกระดับอื่น`}</span></span>
+        </button>
+      </section>`;
+  }
+  function bindStudy() {
+    const r = $app.querySelector("#reviewBtn");
+    if (r) r.addEventListener("click", () => startSession("review"));
+    const l = $app.querySelector("#learnBtn");
+    if (l) l.addEventListener("click", () => openSetup({ mode: "learn" }));
   }
 
   // ---------------- page: home ----------------
@@ -368,10 +423,14 @@
 
     $app.innerHTML = `
       <h1 class="page-title">${title}</h1>
-      <p class="page-sub">${first ? "ฝึกคำศัพท์อังกฤษระดับ A1 ถึง C1 วันละนิด เริ่มได้เลยจากปุ่มด้านล่าง" : "ทำให้ครบเป้าวันละ " + DAILY_GOAL + " ข้อ เพื่อรักษาสถิติฝึกต่อเนื่อง"}</p>
+      <p class="page-sub">${first ? "เริ่มจาก \"เรียนคำใหม่\" วันละ 5 คำ แล้วกลับมาทบทวนตามที่ระบบนัด จะจำศัพท์ได้นานขึ้นมาก" : "ทำให้ครบเป้าวันละ " + DAILY_GOAL + " ข้อ เพื่อรักษาสถิติฝึกต่อเนื่อง"}</p>
 
       ${todayPanel()}
 
+      <h2 class="block-title">เรียนและทบทวน</h2>
+      ${studyBlock()}
+
+      <h2 class="block-title">เกมฝึกศัพท์</h2>
       <section class="quick">
         <button class="quick-btn primary" id="startBtn">
           <span class="quick-icon">${PLAY}</span>
@@ -397,6 +456,7 @@
     `;
     bindSpeak();
     $app.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
+    bindStudy();
     $app.querySelector("#startBtn").addEventListener("click", () => openSetup());
     $app.querySelector("#quickSpeed").addEventListener("click", () => openSetup({ mode: "speed" }));
     const cont = $app.querySelector("#continue");
@@ -410,8 +470,12 @@
     const speedBest = data.best[level + ":speed"];
     $app.innerHTML = `
       <h1 class="page-title">ฝึก</h1>
-      <p class="page-sub">กดเริ่มฝึกเพื่อเลือกระดับ วิธีฝึก และจำนวนข้อ หรือกดที่โหมดด้านล่างเพื่อเริ่มจากโหมดนั้น</p>
+      <p class="page-sub">เรียนคำใหม่และทบทวนตามรอบเพื่อให้จำได้นาน แล้วใช้เกมด้านล่างฝึกให้แม่นขึ้น</p>
 
+      <h2 class="block-title">เรียนและทบทวน</h2>
+      ${studyBlock()}
+
+      <h2 class="block-title">เกมฝึกศัพท์</h2>
       <button class="quick-btn primary wide" id="startBtn">
         <span class="quick-icon">${PLAY}</span>
         <span><b>เริ่มฝึก</b><span>ตอนนี้ตั้งไว้ที่ระดับ ${levelName(level)}, ${data.settings.count} ข้อต่อรอบ</span></span>
@@ -437,17 +501,20 @@
         </div>
       </section>
     `;
+    bindStudy();
     $app.querySelector("#startBtn").addEventListener("click", () => openSetup());
     $app.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => openSetup({ mode: b.dataset.mode })));
   }
 
   // ---------------- setup sheet (choose level, mode, count) ----------------
-  const ALL_MODES = () => [{ id: "speed", title: "ท้าทาย 60 วินาที", desc: "แข่งกับเวลา" }].concat(MODES);
+  const ALL_MODES = () => [{ id: "learn", title: "เรียนคำใหม่" }, { id: "speed", title: "ท้าทาย 60 วินาที", desc: "แข่งกับเวลา" }].concat(MODES);
+  const LEARN_COUNTS = [5, 10, 15];
   function openSetup(preset = {}) {
     const draft = {
       level: data.settings.level,
       mode: preset.mode || data.settings.lastMode || "en2th",
       count: data.settings.count,
+      learnCount: data.settings.learnCount || 5,
     };
     let dlg = document.getElementById("setup");
     if (!dlg) {
@@ -463,7 +530,9 @@
       const prevBody = dlg.querySelector(".sheet-body");
       const keepScroll = prevBody ? prevBody.scrollTop : 0;
       const speed = draft.mode === "speed";
+      const learn = draft.mode === "learn";
       const n = poolFor(draft.level).length;
+      const fresh = poolFor(draft.level).filter((w) => !data.words[w.word]).length;
       dlg.innerHTML = `
         <div class="sheet-inner">
           <div class="sheet-head">
@@ -486,32 +555,39 @@
             <fieldset class="pick">
               <legend><span class="step-no">2</span>เลือกวิธีฝึก</legend>
               <div class="mode-grid">
-                ${ALL_MODES().map((m) => `<button type="button" class="opt mode-opt ${draft.mode === m.id ? "on" : ""} ${m.id === "speed" ? "is-speed" : ""}" data-pm="${m.id}" aria-pressed="${draft.mode === m.id}">
-                  <span class="glyph g-${m.id}">${m.id === "speed" ? CLOCK.replace(/36/g, "22") : ICONS[m.id]}</span><b>${m.title}</b>
+                ${ALL_MODES().map((m) => `<button type="button" class="opt mode-opt ${draft.mode === m.id ? "on" : ""} ${m.id === "speed" || m.id === "learn" ? "is-speed" : ""}" data-pm="${m.id}" aria-pressed="${draft.mode === m.id}">
+                  <span class="glyph g-${m.id}">${m.id === "speed" ? CLOCK.replace(/36/g, "22") : m.id === "learn" ? BOOK.replace(/30/g, "22") : ICONS[m.id]}</span><b>${m.title}</b>
                 </button>`).join("")}
               </div>
             </fieldset>
             <fieldset class="pick">
-              <legend><span class="step-no">3</span>จำนวนข้อ</legend>
-              ${speed
+              <legend><span class="step-no">3</span>${learn ? "จำนวนคำใหม่" : "จำนวนข้อ"}</legend>
+              ${learn
+                ? (fresh
+                  ? `<div class="seg big" role="group" aria-label="จำนวนคำใหม่">${LEARN_COUNTS.map((c) => `<button type="button" class="${draft.learnCount === c ? "active" : ""}" data-plc="${c}">${c} คำ</button>`).join("")}</div>
+                     <p class="pick-note">ระดับนี้เหลือคำที่ยังไม่เคยเรียน ${fresh} คำ ระบบจะสอนทีละคำ แล้วทดสอบจนตอบถูกครบทุกคำ</p>`
+                  : `<p class="pick-note warn">เรียนครบทุกคำในระดับนี้แล้ว ลองเลือกระดับอื่น</p>`)
+                : speed
                 ? `<p class="pick-note">โหมดนี้ไม่จำกัดจำนวนข้อ ตอบได้เรื่อยๆ จนครบ 60 วินาที</p>`
                 : `<div class="seg big" role="group" aria-label="จำนวนข้อ">${COUNTS.map((c) => `<button type="button" class="${draft.count === c ? "active" : ""}" data-pc="${c}">${c} ข้อ</button>`).join("")}</div>
                    ${draft.count > n ? `<p class="pick-note">ระดับนี้มี ${n} คำ จะได้เล่น ${n} ข้อ</p>` : ""}`}
             </fieldset>
           </div>
           <div class="sheet-foot">
-            <p class="summary">${modeTitle(draft.mode)}<br><span>ระดับ ${levelName(draft.level)}, ${speed ? "60 วินาที" : Math.min(draft.count, n) + " ข้อ"}</span></p>
-            <button class="btn big-start" id="goStart">${PLAY.replace(/34/g, "18")} เริ่มฝึก</button>
+            <p class="summary">${modeTitle(draft.mode)}<br><span>ระดับ ${levelName(draft.level)}, ${speed ? "60 วินาที" : learn ? Math.min(draft.learnCount, fresh) + " คำใหม่" : Math.min(draft.count, n) + " ข้อ"}</span></p>
+            <button class="btn big-start" id="goStart" ${learn && !fresh ? "disabled" : ""}>${PLAY.replace(/34/g, "18")} เริ่มฝึก</button>
           </div>
         </div>`;
       dlg.querySelector(".sheet-body").scrollTop = keepScroll;
       dlg.querySelector("#closeSetup").addEventListener("click", () => dlg.close());
       dlg.querySelectorAll("[data-pl]").forEach((b) => b.addEventListener("click", () => { draft.level = b.dataset.pl; draw(); dlg.querySelector(`[data-pl="${draft.level}"]`).focus({ preventScroll: true }); }));
       dlg.querySelectorAll("[data-pm]").forEach((b) => b.addEventListener("click", () => { draft.mode = b.dataset.pm; draw(); dlg.querySelector(`[data-pm="${draft.mode}"]`).focus({ preventScroll: true }); }));
+      dlg.querySelectorAll("[data-plc]").forEach((b) => b.addEventListener("click", () => { draft.learnCount = +b.dataset.plc; draw(); dlg.querySelector(`[data-plc="${draft.learnCount}"]`).focus({ preventScroll: true }); }));
       dlg.querySelectorAll("[data-pc]").forEach((b) => b.addEventListener("click", () => { draft.count = +b.dataset.pc; draw(); dlg.querySelector(`[data-pc="${draft.count}"]`).focus({ preventScroll: true }); }));
       dlg.querySelector("#goStart").addEventListener("click", () => {
         data.settings.level = draft.level;
         data.settings.count = draft.count;
+        data.settings.learnCount = draft.learnCount;
         persist();
         dlg.close();
         startSession(draft.mode);
@@ -540,6 +616,8 @@
         <div class="section-head"><div><h2>ภาพรวม</h2></div></div>
         <div class="stat-grid">
           <div><b>${data.xp || 0}</b><span>XP สะสม</span></div>
+          <div><b>${learnedCount()}</b><span>คำที่เรียนแล้ว</span></div>
+          <div><b>${dueWords().length}</b><span>ต้องทบทวนวันนี้</span></div>
           <div><b>${data.totalAnswered || 0}</b><span>ข้อที่ทำทั้งหมด</span></div>
           <div><b>×${data.bestCombo || 0}</b><span>คอมโบสูงสุด</span></div>
           <div><b>${have.length} / ${BADGES.length}</b><span>เหรียญรางวัล</span></div>
@@ -547,7 +625,7 @@
       </section>
 
       <section class="section">
-        <div class="section-head"><div><h2>ความคืบหน้าแต่ละระดับ</h2><p>จำได้แล้ว กำลังเรียนรู้ และยังไม่เคยฝึก</p></div></div>
+        <div class="section-head"><div><h2>ความคืบหน้าแต่ละระดับ</h2><p>คำจะนับว่า "จำได้แล้ว" เมื่อทบทวนตามรอบผ่านมาแล้ว ${MASTER_BOX} ครั้ง (ใช้เวลาประมาณ 10 วันขึ้นไป)</p></div></div>
         <div class="level-bars">
           ${lvls.map((l) => {
             const p = poolFor(l.id), n = p.length;
@@ -561,7 +639,7 @@
               <span class="lbar-num">${m}/${n}</span>
             </div>`;
           }).join("")}
-          <div class="legend"><span><i class="dot mastered"></i> จำได้แล้ว</span><span><i class="dot learning"></i> กำลังเรียนรู้</span><span><i class="dot"></i> ยังไม่เคยฝึก</span></div>
+          <div class="legend"><span><i class="dot mastered"></i> จำได้แล้ว</span><span><i class="dot learning"></i> กำลังเรียนรู้</span><span><i class="dot"></i> ยังไม่เคยเรียน</span></div>
         </div>
       </section>
 
@@ -592,11 +670,18 @@
   function startSession(mode) {
     stopSession();
     document.body.classList.add("in-session");
-    if (mode !== "speed") { data.settings.lastMode = mode; persist(); }
+    if (!["speed", "learn", "review"].includes(mode)) { data.settings.lastMode = mode; persist(); }
     const level = data.settings.level;
     const speed = mode === "speed";
-    const words = speed ? shuffle(poolFor(level)) : pickWords(level, data.settings.count);
-    S = { mode, level, words, i: 0, correct: 0, wrong: [], answered: false, combo: 0, maxCombo: 0, xp: 0, levelUp: 0, answeredN: 0 };
+    let words;
+    if (speed) words = shuffle(poolFor(level));
+    else if (mode === "learn") words = shuffle(poolFor(level).filter((w) => !data.words[w.word])).slice(0, data.settings.learnCount || 5);
+    else if (mode === "review") words = shuffle(dueWords().sort((a, b) => data.words[a.word].due - data.words[b.word].due).slice(0, 20));
+    else words = pickWords(level, data.settings.count);
+    if (!words.length) { document.body.classList.remove("in-session"); return renderPage(); }
+    S = { mode, level, words, i: 0, correct: 0, wrong: [], answered: false, combo: 0, maxCombo: 0, xp: 0, levelUp: 0, answeredN: 0,
+      requeue: mode === "learn" || mode === "review", retry: [], set: words.slice(), skipped: [] };
+    if (mode === "learn") { S.phase = "intro"; S.introI = 0; renderLearnIntro(); window.scrollTo(0, 0); return; }
     if (speed) {
       S.endAt = Date.now() + 60000;
       S.timer = setInterval(() => {
@@ -636,6 +721,12 @@
     const w = S.words[S.i];
     let mode = S.mode;
     if (mode === "speed") mode = Math.random() < 0.5 ? "en2th" : "th2en";
+    else if (mode === "learn") mode = S.i % 2 ? "th2en" : "en2th";
+    else if (mode === "review") {
+      const st = data.words[w.word] || { box: 0 };
+      const pool = ["en2th", "th2en", "blank"].concat(canSpeak ? ["listen"] : []).concat(st.box >= 2 ? ["spell", "spell"] : []);
+      mode = pool[Math.floor(Math.random() * pool.length)];
+    }
     switch (mode) {
       case "flash": return renderFlash(w);
       case "en2th": return renderChoice(w, {
@@ -678,7 +769,7 @@
   }
 
   function feedbackDetail(w) {
-    return `<div class="fb-detail"><span class="w">${esc(w.word)}</span> <span class="pos-i" style="font:italic 14px var(--serif);color:var(--muted)">${esc(w.pos)}</span>&nbsp; ${esc(w.th)}<span class="ex">${highlight(w.ex, w.word)}</span></div>`;
+    return `<div class="fb-detail"><span class="w">${esc(w.word)}</span> <span class="pos-i" style="font:italic 14px var(--serif);color:var(--muted)">${esc(w.pos)}</span>&nbsp; ${esc(w.th)}<span class="ex">${highlight(w.ex, w.word)}</span>${w.exTh ? `<span class="ex-th">${esc(w.exTh)}</span>` : ""}</div>`;
   }
 
   // ----- multiple choice -----
@@ -775,7 +866,8 @@
           <div class="flash-face flash-back">
             <div class="prompt-label">ความหมาย</div>
             <p class="prompt-thai">${esc(w.th)}</p>
-            <div class="flash-example">${esc(w.ex)}</div>
+            <div class="flash-example">${highlight(w.ex, w.word)}</div>
+            ${w.exTh ? `<div class="flash-example-th">${esc(w.exTh)}</div>` : ""}
             ${speakBtn(w.ex)}
           </div>
         </div>
@@ -820,6 +912,7 @@
       floatText("+" + gain + " XP", $app.querySelector(".card, .flash"));
     } else {
       if (!S.wrong.includes(w)) S.wrong.push(w);
+      if (S.requeue && !S.retry.includes(w)) S.retry.push(w);
       S.combo = 0;
       sfx.bad();
     }
@@ -856,8 +949,61 @@
       if (S.i >= S.words.length) { S.words = shuffle(S.words); S.i = 0; }
       return renderQuestion();
     }
+    if (S.i >= S.words.length && S.requeue && S.retry.length) {
+      // คำที่ตอบผิดจะวนกลับมาถามอีกจนกว่าจะตอบถูก
+      S.words = S.words.concat(shuffle(S.retry));
+      S.retry = [];
+    }
     if (S.i >= S.words.length) return renderResult();
     renderQuestion();
+  }
+
+  // ----- learn: introduce new words before quizzing -----
+  function renderLearnIntro() {
+    const w = S.words[S.introI];
+    const n = S.words.length;
+    $app.innerHTML = `
+      <div class="session-head">
+        <button class="back" id="quit" aria-label="ออก"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        <div class="progress"><span style="width:${(S.introI / n) * 50}%"></span></div>
+        <div class="counter">คำใหม่ ${S.introI + 1} / ${n}</div>
+      </div>
+      <div class="learn-card">
+        <div class="tags"><span class="tag">คำใหม่</span><span class="tag">${w.level}</span></div>
+        <h2 class="headword">${esc(w.word)}</h2>
+        <div class="entry-line"><span class="pos-i">${esc(w.pos)}</span><span>${esc(w.th)}</span></div>
+        <p class="example">${highlight(w.ex, w.word)}</p>
+        ${w.exTh ? `<p class="example-th">${esc(w.exTh)}</p>` : ""}
+        ${canSpeak ? `<div class="entry-actions"><button class="btn ghost" data-speak="${esc(w.word)}">${SPK} ฟังคำ</button><button class="btn ghost" data-speak="${esc(w.ex)}">${SPK} ฟังประโยค</button></div>` : ""}
+      </div>
+      <div class="learn-actions">
+        <button class="btn ghost" id="knowIt">รู้จักคำนี้แล้ว ข้ามไป</button>
+        <button class="btn" id="gotIt">${S.introI === n - 1 ? "ไปทดสอบเลย" : "คำถัดไป"}</button>
+      </div>
+      <div class="kbd-hint">กด <kbd>Enter</kbd> ไปคำถัดไป</div>
+    `;
+    bindQuit(); bindSpeak();
+    setTimeout(() => speak(w.word), 200);
+    const advance = () => {
+      S.introI++;
+      if (S.introI >= S.words.length) {
+        if (!S.words.length) return renderResult();
+        S.phase = "quiz"; S.words = shuffle(S.words); S.i = 0;
+        return renderQuestion();
+      }
+      renderLearnIntro();
+    };
+    $app.querySelector("#gotIt").addEventListener("click", advance);
+    $app.querySelector("#knowIt").addEventListener("click", () => {
+      // คำที่รู้แล้ว: ตั้งให้ทบทวนอีก 7 วัน แล้วดึงคำใหม่มาแทน
+      data.words[w.word] = { r: 1, x: 0, box: 3, due: dayNum() + INTERVALS[3] };
+      persist();
+      S.skipped.push(w);
+      const fresh = shuffle(poolFor(S.level).filter((x) => !data.words[x.word] && !S.words.includes(x)))[0];
+      if (fresh) { S.words[S.introI] = fresh; S.set = S.words.slice(); renderLearnIntro(); }
+      else { S.words.splice(S.introI, 1); S.set = S.words.slice(); S.introI--; advance(); }
+    });
+    keyHandler = (e) => { if (e.key === "Enter") { e.preventDefault(); advance(); } };
   }
 
   // ---------------- result ----------------
@@ -866,6 +1012,7 @@
     document.body.classList.remove("in-session");
     if (S.timer) { clearInterval(S.timer); S.timer = null; }
     bumpStreak();
+    if (S.mode === "learn" || S.mode === "review") return renderStudyResult();
     const speed = S.mode === "speed";
     const total = speed ? S.answeredN : S.words.length;
     const pct = total ? Math.round((S.correct / total) * 100) : 0;
@@ -923,44 +1070,93 @@
     window.scrollTo(0, 0);
   }
 
+  function renderStudyResult() {
+    const learn = S.mode === "learn";
+    const set = S.set;
+    const firstTry = set.filter((w) => !S.wrong.includes(w)).length;
+    const newBadges = checkBadges({ perfect: false, speedScore: 0 });
+    const left = dueWords().length;
+    const title = learn ? `เรียนคำใหม่ ${set.length} คำแล้ว` : `ทบทวนครบ ${set.length} คำ`;
+    const sub = learn
+      ? "คำเหล่านี้จะกลับมาให้ทบทวนพรุ่งนี้ ยิ่งจำได้ ระยะห่างก็จะยิ่งนานขึ้น"
+      : left ? `ยังเหลือคำที่ต้องทบทวนวันนี้อีก ${left} คำ` : "วันนี้ไม่มีคำที่ต้องทบทวนแล้ว";
+    $app.innerHTML = `
+      <div class="result">
+        ${S.levelUp ? `<div class="levelup">เลเวลอัป! ตอนนี้คุณอยู่ Lv ${S.levelUp}</div>` : ""}
+        <div class="score-big">${set.length}<small> คำ</small></div>
+        <h2>${title}</h2>
+        <p>${sub}</p>
+        <div class="earned">
+          <div><b>${firstTry}/${set.length}</b><span>ถูกตั้งแต่ครั้งแรก</span></div>
+          <div><b>+${S.xp}</b><span>XP ที่ได้</span></div>
+          <div><b>${Math.min(dailyCount(), DAILY_GOAL)}/${DAILY_GOAL}</b><span>เป้าวันนี้</span></div>
+        </div>
+        ${newBadges.length ? `<div class="new-badges"><h3>ได้เหรียญใหม่</h3><div class="badges">${newBadges.map((b) => badgeHTML(b, true)).join("")}</div></div>` : ""}
+        <div class="result-actions">
+          ${learn ? `<button class="btn" id="again">เรียนคำใหม่อีก ${data.settings.learnCount || 5} คำ</button>` : left ? `<button class="btn" id="again">ทบทวนต่อ (${left} คำ)</button>` : ""}
+          <button class="btn ${learn || left ? "ghost" : ""}" id="home">กลับหน้าแรก</button>
+        </div>
+        <div class="review">
+          <h3>${learn ? "คำที่เพิ่งเรียน" : "คำที่ทบทวนรอบนี้"}</h3>
+          <div class="word-list">
+            ${set.concat(S.skipped).map((w) => `<div class="word-row"><i class="dot ${status(w.word)}"></i><div><div class="w">${esc(w.word)}<small>${esc(w.pos)}</small></div><div class="t">${esc(w.th)}</div></div><span class="due-chip">${nextReviewText(w.word)}</span></div>`).join("")}
+          </div>
+        </div>
+      </div>`;
+    if (firstTry === set.length || S.levelUp || newBadges.length) { confetti(); sfx.win(); }
+    const again = $app.querySelector("#again");
+    if (again) again.addEventListener("click", () => startSession(S.mode));
+    $app.querySelector("#home").addEventListener("click", () => go("home"));
+    keyHandler = (e) => { if (e.key === "Enter" && again) startSession(S.mode); };
+    window.scrollTo(0, 0);
+  }
+
   // ---------------- library ----------------
-  let libLevel = null, libQuery = "";
+  let libLevel = null, libQuery = "", libFilter = "all";
   function renderLibrary() {
     setNav("library");
     keyHandler = null;
     if (!libLevel) libLevel = data.settings.level;
     $app.innerHTML = `
       <h1 class="page-title">คลังคำศัพท์</h1>
-      <p class="page-sub">ดูคำทั้งหมดในแต่ละระดับ พร้อมสถานะว่าคำไหนจำได้แล้ว</p>
+      <p class="page-sub">ดูคำทั้งหมดในแต่ละระดับ แตะที่คำเพื่อดูประโยคตัวอย่างและคำแปล</p>
       <div class="seg" style="margin-bottom:14px;flex-wrap:wrap">
         ${LEVELS.map((l) => `<button class="${l.id === libLevel ? "active" : ""}" data-lib="${l.id}">${l.name}</button>`).join("")}
       </div>
       <div class="lib-toolbar">
         <input class="search" id="q" placeholder="ค้นหาคำศัพท์หรือความหมาย…" value="${esc(libQuery)}" />
+        <select class="filter" id="f" aria-label="กรองตามสถานะ">
+          ${[["all", "ทุกสถานะ"], ["new", "ยังไม่เคยเรียน"], ["learning", "กำลังเรียนรู้"], ["mastered", "จำได้แล้ว"], ["due", "ถึงเวลาทบทวน"]].map(([v, t]) => `<option value="${v}" ${libFilter === v ? "selected" : ""}>${t}</option>`).join("")}
+        </select>
       </div>
       <div class="legend">
-        <span><i class="dot"></i> ยังไม่เคยฝึก</span>
+        <span><i class="dot"></i> ยังไม่เคยเรียน</span>
         <span><i class="dot learning"></i> กำลังเรียนรู้</span>
-        <span><i class="dot mastered"></i> จำได้แล้ว</span>
+        <span><i class="dot mastered"></i> จำได้แล้ว (ทบทวนผ่าน ${MASTER_BOX} รอบ)</span>
         <button class="link-btn" id="reset">ล้างความคืบหน้าทั้งหมด</button>
       </div>
       <div class="word-list" id="list"></div>
     `;
     const draw = () => {
       const q = libQuery.trim().toLowerCase();
-      const list = poolFor(libLevel).filter((w) => !q || w.word.toLowerCase().includes(q) || w.th.includes(q));
-      $app.querySelector("#list").innerHTML = list.length
-        ? list.map((w) => `<div class="word-row">
-            <i class="dot ${status(w.word)}"></i>
-            <div><div class="w">${esc(w.word)}<small>${esc(w.pos)}${libLevel === "ALL" ? ", " + w.level : ""}</small></div><div class="t">${esc(w.th)}</div></div>
-            ${canSpeak ? `<button class="mini-speak" data-speak="${esc(w.word)}" aria-label="ฟังเสียง">${SPK}</button>` : "<span></span>"}
-          </div>`).join("")
-        : `<div class="empty">ไม่พบคำที่ค้นหา</div>`;
+      const list = poolFor(libLevel).filter((w) => (!q || w.word.toLowerCase().includes(q) || w.th.includes(q))
+        && (libFilter === "all" || (libFilter === "due" ? isDue(w.word) : status(w.word) === libFilter)));
+      $app.querySelector("#list").innerHTML = (list.length ? `<p class="list-count">${list.length} คำ</p>` : "") + (list.length
+        ? list.map((w) => `<details class="word-item">
+            <summary class="word-row">
+              <i class="dot ${status(w.word)}"></i>
+              <div><div class="w">${esc(w.word)}<small>${esc(w.pos)}${libLevel === "ALL" ? ", " + w.level : ""}</small></div><div class="t">${esc(w.th)}</div></div>
+              <span class="row-end">${data.words[w.word] ? `<span class="due-chip ${isDue(w.word) ? "now" : ""}">${nextReviewText(w.word)}</span>` : ""}${canSpeak ? `<button class="mini-speak" data-speak="${esc(w.word)}" aria-label="ฟังเสียง">${SPK}</button>` : ""}</span>
+            </summary>
+            <div class="word-more"><p class="ex">${highlight(w.ex, w.word)}</p>${w.exTh ? `<p class="ex-th">${esc(w.exTh)}</p>` : ""}</div>
+          </details>`).join("")
+        : `<div class="empty">ไม่พบคำที่ตรงกับเงื่อนไข</div>`);
       bindSpeak($app.querySelector("#list"));
     };
     draw();
     $app.querySelectorAll("[data-lib]").forEach((b) => b.addEventListener("click", () => { libLevel = b.dataset.lib; renderLibrary(); }));
     $app.querySelector("#q").addEventListener("input", (e) => { libQuery = e.target.value; draw(); });
+    $app.querySelector("#f").addEventListener("change", (e) => { libFilter = e.target.value; draw(); });
     const resetBtn = $app.querySelector("#reset");
     resetBtn.addEventListener("click", () => {
       if (resetBtn.dataset.armed) {

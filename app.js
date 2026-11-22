@@ -219,9 +219,37 @@
   const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const poolFor = (level) => (level === "ALL" ? ALL_WORDS : ALL_WORDS.filter((w) => w.level === level));
 
+  // ----- บทเรียน: แต่ละระดับแบ่งเป็นบทตามหัวข้อ (data/units.js) -----
+  const UNITS = {};      // level -> [{ id, level, no, title, words: [wordObj] }]
+  const UNIT_BY_ID = {};
+  LEVELS.filter((l) => l.id !== "ALL").forEach((l) => {
+    const byWord = new Map(poolFor(l.id).map((w) => [w.word, w]));
+    const used = new Set();
+    const list = ((window.UNITS || {})[l.id] || []).map((u, i) => {
+      const words = u.words.trim().split(/\s+/).map((k) => byWord.get(k)).filter((w) => w && !used.has(w.word) && used.add(w.word));
+      return { id: l.id + "-" + (i + 1), level: l.id, no: i + 1, title: u.title, words };
+    });
+    const rest = poolFor(l.id).filter((w) => !used.has(w.word));
+    if (rest.length) list.push({ id: l.id + "-" + (list.length + 1), level: l.id, no: list.length + 1, title: "คำอื่นๆ", words: rest });
+    UNITS[l.id] = list;
+    list.forEach((u) => { UNIT_BY_ID[u.id] = u; u.words.forEach((w) => { w.unit = u.id; }); });
+  });
+  const unitOf = (id) => (id && UNIT_BY_ID[id]) || null;
+  // คำในขอบเขตที่เลือก: บทเดียว หรือ ทั้งระดับ
+  const scopePool = (level, unit) => { const u = unitOf(unit); return u && (level === u.level) ? u.words : poolFor(level); };
+  const unitStats = (u) => {
+    const n = u.words.length;
+    const learned = u.words.filter((w) => data.words[w.word]).length;
+    const mastered = u.words.filter((w) => status(w.word) === "mastered").length;
+    return { n, learned, mastered, fresh: n - learned };
+  };
+  // บทถัดไปที่ควรเรียน = บทแรกที่ยังมีคำที่ไม่เคยเรียน
+  const nextUnit = (level) => (UNITS[level] || []).find((u) => unitStats(u).fresh > 0) || null;
+  const scopeName = (level, unit) => { const u = unitOf(unit); return u ? `${u.level} บทที่ ${u.no} ${u.title}` : `ระดับ ${levelName(level)}`; };
+
   // คำที่ตอบผิดบ่อย / ยังไม่ค่อยเห็น จะถูกสุ่มมาก่อน
-  function pickWords(level, n) {
-    const pool = poolFor(level);
+  function pickWords(level, n, unit) {
+    const pool = scopePool(level, unit);
     const scored = pool.map((w) => {
       const s = data.words[w.word];
       const score = !s ? 4 : (isDue(w.word) ? -6 : 0) + s.box * 2 - s.x + Math.random() * 3;
@@ -646,6 +674,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     const due = dueWords().length;
     const level = data.settings.level;
     const fresh = poolFor(level).filter((w) => !data.words[w.word]).length;
+    const nu = level === "ALL" ? null : nextUnit(level);
     return `<section class="study">
         <button class="study-btn review ${due ? "has-due" : ""}" id="reviewBtn" ${due ? "" : "disabled"}>
           <span class="quick-icon">${REPEAT}</span>
@@ -654,7 +683,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
         </button>
         <button class="study-btn learn" id="learnBtn">
           <span class="quick-icon">${BOOK}</span>
-          <span><b>เรียนคำใหม่</b><span>${fresh ? `ระดับ ${levelName(level)} เหลือคำใหม่อีก ${fresh} คำ` : `เรียนครบทุกคำในระดับ ${levelName(level)} แล้ว ลองเลือกระดับอื่น`}</span></span>
+          <span><b>เรียนคำใหม่</b><span>${nu ? `ต่อที่ ${level} บทที่ ${nu.no} ${esc(nu.title)}, เหลือ ${unitStats(nu).fresh} คำ` : fresh ? `ระดับ ${levelName(level)} เหลือคำใหม่อีก ${fresh} คำ` : `เรียนครบทุกคำในระดับ ${levelName(level)} แล้ว ลองเลือกระดับอื่น`}</span></span>
         </button>
       </section>`;
   }
@@ -662,7 +691,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     const r = $app.querySelector("#reviewBtn");
     if (r) r.addEventListener("click", () => startSession("review"));
     const l = $app.querySelector("#learnBtn");
-    if (l) l.addEventListener("click", () => openSetup({ mode: "learn" }));
+    if (l) l.addEventListener("click", () => { const nu = nextUnit(data.settings.level); openSetup({ mode: "learn", unit: nu ? nu.id : null }); });
   }
 
   // ---------------- page: home ----------------
@@ -696,7 +725,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
           <span class="quick-icon">${CLOCK}</span>
           <span><b>ท้าทาย 60 วินาที</b><span>${speedBest != null ? `สถิติของคุณ ${speedBest} ข้อ` : "ตอบให้ได้มากที่สุดก่อนหมดเวลา"}</span></span>
         </button>
-        ${first ? "" : `<button class="quick-link" id="continue">ฝึกต่อแบบเดิม: ${modeTitle(lastMode)} ระดับ ${levelName(level)}, ${data.settings.count} ข้อ ${CHEV}</button>`}
+        ${first ? "" : `<button class="quick-link" id="continue">ฝึกต่อแบบเดิม: ${modeTitle(lastMode)} ${esc(scopeName(level, data.settings.unit))}, ${data.settings.count} ข้อ ${CHEV}</button>`}
       </section>
 
       <section class="wotd card-soft">
@@ -720,6 +749,41 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     $app.querySelector("#nextWord").addEventListener("click", () => { wotdOffset += 1; homeAnimated = false; renderHome(); });
   }
 
+  // ---------------- units (บทเรียน) ----------------
+  let unitLevel = null;
+  function unitsSection() {
+    if (!unitLevel || unitLevel === "ALL") unitLevel = data.settings.level === "ALL" ? "A1" : data.settings.level;
+    const units = UNITS[unitLevel] || [];
+    const nu = nextUnit(unitLevel);
+    return `<section class="section units">
+      <div class="section-head">
+        <div><h2>บทเรียน</h2><p>เลือกบทไหนก่อนก็ได้ บทที่มีป้าย "บทถัดไป" คือบทที่ควรเรียนต่อ</p></div>
+        <div class="seg" role="group" aria-label="ระดับของบทเรียน">${LEVELS.filter((l) => l.id !== "ALL").map((l) => `<button class="${l.id === unitLevel ? "active" : ""}" data-ulv="${l.id}">${l.name}</button>`).join("")}</div>
+      </div>
+      <div class="unit-cards">
+        ${units.map((u) => {
+          const st = unitStats(u);
+          const done = st.n && st.mastered === st.n;
+          const isNext = nu && nu.id === u.id;
+          return `<button class="unit-card ${done ? "done" : ""} ${isNext ? "next" : ""}" data-unit="${u.id}">
+            <span class="unit-top"><span class="u-no">${u.no}</span>${isNext ? `<span class="u-tag">บทถัดไป</span>` : done ? `<span class="u-tag done">จำได้ครบ</span>` : st.fresh === 0 ? `<span class="u-tag seen">เรียนครบแล้ว</span>` : ""}</span>
+            <b class="u-title">${esc(u.title)}</b>
+            <span class="u-sample">${u.words.slice(0, 4).map((w) => esc(w.word)).join(", ")}…</span>
+            <span class="u-bar" title="จำได้ ${st.mastered}, เรียนแล้ว ${st.learned} จาก ${st.n} คำ"><span class="seg-m" style="width:${(st.mastered / st.n) * 100}%"></span><span class="seg-l" style="width:${((st.learned - st.mastered) / st.n) * 100}%"></span></span>
+            <span class="u-meta">เรียนแล้ว ${st.learned}/${st.n} คำ</span>
+          </button>`;
+        }).join("")}
+      </div>
+    </section>`;
+  }
+  function bindUnits(rerender) {
+    $app.querySelectorAll("[data-ulv]").forEach((b) => b.addEventListener("click", () => { unitLevel = b.dataset.ulv; rerender(); }));
+    $app.querySelectorAll("[data-unit]").forEach((b) => b.addEventListener("click", () => {
+      const u = unitOf(b.dataset.unit);
+      openSetup({ level: u.level, unit: u.id, mode: unitStats(u).fresh ? "learn" : (data.settings.lastMode || "en2th") });
+    }));
+  }
+
   // ---------------- page: practice ----------------
   function renderPractice() {
     const level = data.settings.level;
@@ -731,10 +795,12 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       <h2 class="block-title">เรียนและทบทวน</h2>
       ${studyBlock()}
 
+      ${unitsSection()}
+
       <h2 class="block-title">เกมฝึกศัพท์</h2>
       <button class="quick-btn primary wide" id="startBtn">
         <span class="quick-icon">${PLAY}</span>
-        <span><b>เริ่มฝึก</b><span>ตอนนี้ตั้งไว้ที่ระดับ ${levelName(level)}, ${data.settings.count} ข้อต่อรอบ</span></span>
+        <span><b>เริ่มฝึก</b><span>ตอนนี้ตั้งไว้ที่ ${esc(scopeName(level, data.settings.unit))}, ${data.settings.count} ข้อต่อรอบ</span></span>
       </button>
 
       <section class="section">
@@ -758,6 +824,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       </section>
     `;
     bindStudy();
+    bindUnits(renderPractice);
     $app.querySelector("#startBtn").addEventListener("click", () => openSetup());
     $app.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => openSetup({ mode: b.dataset.mode })));
   }
@@ -774,8 +841,10 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     setTimeout(() => { dlg.classList.remove("closing"); dlg.close(); }, 200);
   }
   function openSetup(preset = {}) {
+    const startLevel = preset.level || data.settings.level;
     const draft = {
-      level: data.settings.level,
+      level: startLevel,
+      unit: preset.unit !== undefined ? preset.unit : (unitOf(data.settings.unit) && unitOf(data.settings.unit).level === startLevel ? data.settings.unit : null),
       mode: preset.mode || data.settings.lastMode || "en2th",
       count: data.settings.count,
       learnCount: data.settings.learnCount || 5,
@@ -796,8 +865,10 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       const keepScroll = prevBody ? prevBody.scrollTop : 0;
       const speed = draft.mode === "speed";
       const learn = draft.mode === "learn";
-      const n = poolFor(draft.level).length;
-      const fresh = poolFor(draft.level).filter((w) => !data.words[w.word]).length;
+      const n = scopePool(draft.level, draft.unit).length;
+      const fresh = scopePool(draft.level, draft.unit).filter((w) => !data.words[w.word]).length;
+      const units = UNITS[draft.level] || [];
+      const nu = nextUnit(draft.level);
       dlg.innerHTML = `
         <div class="sheet-inner">
           <div class="sheet-head">
@@ -817,8 +888,17 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
                 }).join("")}
               </div>
             </fieldset>
+            ${units.length ? `<fieldset class="pick">
+              <legend><span class="step-no">2</span>เลือกบท</legend>
+              <div class="unit-grid">
+                <button type="button" class="opt unit-opt ${!draft.unit ? "on" : ""}" data-pu="" aria-pressed="${!draft.unit}"><b>ทั้งระดับ</b><small>${poolFor(draft.level).length} คำ</small></button>
+                ${units.map((u) => { const st = unitStats(u); return `<button type="button" class="opt unit-opt ${draft.unit === u.id ? "on" : ""} ${nu && nu.id === u.id ? "is-next" : ""}" data-pu="${u.id}" aria-pressed="${draft.unit === u.id}">
+                  <b><span class="u-no">${u.no}</span>${esc(u.title)}</b><small>เรียนแล้ว ${st.learned}/${st.n}${st.n && st.mastered === st.n ? " · จำได้ครบ" : ""}</small>
+                </button>`; }).join("")}
+              </div>
+            </fieldset>` : ""}
             <fieldset class="pick">
-              <legend><span class="step-no">2</span>เลือกวิธีฝึก</legend>
+              <legend><span class="step-no">${units.length ? 3 : 2}</span>เลือกวิธีฝึก</legend>
               <div class="mode-grid">
                 ${ALL_MODES().map((m) => `<button type="button" class="opt mode-opt ${draft.mode === m.id ? "on" : ""} ${m.id === "speed" || m.id === "learn" ? "is-speed" : ""}" data-pm="${m.id}" aria-pressed="${draft.mode === m.id}">
                   <span class="glyph g-${m.id}">${m.id === "speed" ? CLOCK.replace(/36/g, "22") : m.id === "learn" ? BOOK.replace(/30/g, "22") : ICONS[m.id]}</span><b>${m.title}</b>
@@ -826,31 +906,33 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
               </div>
             </fieldset>
             <fieldset class="pick">
-              <legend><span class="step-no">3</span>${learn ? "จำนวนคำใหม่" : "จำนวนข้อ"}</legend>
+              <legend><span class="step-no">${units.length ? 4 : 3}</span>${learn ? "จำนวนคำใหม่" : "จำนวนข้อ"}</legend>
               ${learn
                 ? (fresh
                   ? `<div class="seg big" role="group" aria-label="จำนวนคำใหม่">${LEARN_COUNTS.map((c) => `<button type="button" class="${draft.learnCount === c ? "active" : ""}" data-plc="${c}">${c} คำ</button>`).join("")}</div>
-                     <p class="pick-note">ระดับนี้เหลือคำที่ยังไม่เคยเรียน ${fresh} คำ ระบบจะสอนทีละคำ แล้วทดสอบจนตอบถูกครบทุกคำ</p>`
-                  : `<p class="pick-note warn">เรียนครบทุกคำในระดับนี้แล้ว ลองเลือกระดับอื่น</p>`)
+                     <p class="pick-note">${draft.unit ? "บทนี้" : "ระดับนี้"}เหลือคำที่ยังไม่เคยเรียน ${fresh} คำ${!draft.unit && nu ? ` ระบบจะเริ่มจากบทที่ ${nu.no} ${esc(nu.title)} ก่อน` : ""} สอนทีละคำ แล้วทดสอบจนตอบถูกครบทุกคำ</p>`
+                  : `<p class="pick-note warn">เรียนครบทุกคำใน${draft.unit ? "บทนี้" : "ระดับนี้"}แล้ว ลองเลือก${draft.unit ? "บท" : "ระดับ"}อื่น หรือเล่นเกมเพื่อทบทวน</p>`)
                 : speed
                 ? `<p class="pick-note">โหมดนี้ไม่จำกัดจำนวนข้อ ตอบได้เรื่อยๆ จนครบ 60 วินาที</p>`
                 : `<div class="seg big" role="group" aria-label="จำนวนข้อ">${COUNTS.map((c) => `<button type="button" class="${draft.count === c ? "active" : ""}" data-pc="${c}">${c} ข้อ</button>`).join("")}</div>
-                   ${draft.count > n ? `<p class="pick-note">ระดับนี้มี ${n} คำ จะได้เล่น ${n} ข้อ</p>` : ""}`}
+                   ${draft.count > n ? `<p class="pick-note">${draft.unit ? "บทนี้" : "ระดับนี้"}มี ${n} คำ จะได้เล่น ${n} ข้อ</p>` : ""}`}
             </fieldset>
           </div>
           <div class="sheet-foot">
-            <p class="summary">${modeTitle(draft.mode)}<br><span>ระดับ ${levelName(draft.level)}, ${speed ? "60 วินาที" : learn ? Math.min(draft.learnCount, fresh) + " คำใหม่" : Math.min(draft.count, n) + " ข้อ"}</span></p>
+            <p class="summary">${modeTitle(draft.mode)}<br><span>${esc(scopeName(draft.level, draft.unit))}, ${speed ? "60 วินาที" : learn ? Math.min(draft.learnCount, fresh) + " คำใหม่" : Math.min(draft.count, n) + " ข้อ"}</span></p>
             <button class="btn big-start" id="goStart" ${learn && !fresh ? "disabled" : ""}>${PLAY.replace(/34/g, "18")} เริ่มฝึก</button>
           </div>
         </div>`;
       dlg.querySelector(".sheet-body").scrollTop = keepScroll;
       dlg.querySelector("#closeSetup").addEventListener("click", () => closeSheet());
-      dlg.querySelectorAll("[data-pl]").forEach((b) => b.addEventListener("click", () => { draft.level = b.dataset.pl; draw(); dlg.querySelector(`[data-pl="${draft.level}"]`).focus({ preventScroll: true }); }));
+      dlg.querySelectorAll("[data-pu]").forEach((b) => b.addEventListener("click", () => { draft.unit = b.dataset.pu || null; draw(); dlg.querySelector(`[data-pu="${draft.unit || ""}"]`).focus({ preventScroll: true }); }));
+      dlg.querySelectorAll("[data-pl]").forEach((b) => b.addEventListener("click", () => { if (draft.level !== b.dataset.pl) draft.unit = null; draft.level = b.dataset.pl; draw(); dlg.querySelector(`[data-pl="${draft.level}"]`).focus({ preventScroll: true }); }));
       dlg.querySelectorAll("[data-pm]").forEach((b) => b.addEventListener("click", () => { draft.mode = b.dataset.pm; draw(); dlg.querySelector(`[data-pm="${draft.mode}"]`).focus({ preventScroll: true }); }));
       dlg.querySelectorAll("[data-plc]").forEach((b) => b.addEventListener("click", () => { draft.learnCount = +b.dataset.plc; draw(); dlg.querySelector(`[data-plc="${draft.learnCount}"]`).focus({ preventScroll: true }); }));
       dlg.querySelectorAll("[data-pc]").forEach((b) => b.addEventListener("click", () => { draft.count = +b.dataset.pc; draw(); dlg.querySelector(`[data-pc="${draft.count}"]`).focus({ preventScroll: true }); }));
       dlg.querySelector("#goStart").addEventListener("click", () => {
         data.settings.level = draft.level;
+        data.settings.unit = draft.unit || null;
         data.settings.count = draft.count;
         data.settings.learnCount = draft.learnCount;
         persist();
@@ -939,14 +1021,20 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     document.body.classList.add("in-session");
     if (!["speed", "learn", "review"].includes(mode)) { data.settings.lastMode = mode; persist(); }
     const level = data.settings.level;
+    const unit = unitOf(data.settings.unit) && unitOf(data.settings.unit).level === level ? data.settings.unit : null;
     const speed = mode === "speed";
     let words;
-    if (speed) words = shuffle(poolFor(level));
-    else if (mode === "learn") words = shuffle(poolFor(level).filter((w) => !data.words[w.word])).slice(0, data.settings.learnCount || 5);
+    if (speed) words = shuffle(scopePool(level, unit));
+    else if (mode === "learn") {
+      // ไม่ได้เลือกบท: เรียงตามบท เรียนบทที่ค้างอยู่ให้จบก่อนขึ้นบทถัดไป
+      const ordered = unit ? scopePool(level, unit) : level === "ALL" ? shuffle(ALL_WORDS) : (UNITS[level] || []).flatMap((u) => u.words);
+      words = ordered.filter((w) => !data.words[w.word]).slice(0, data.settings.learnCount || 5);
+      words = shuffle(words);
+    }
     else if (mode === "review") words = shuffle(dueWords().sort((a, b) => data.words[a.word].due - data.words[b.word].due).slice(0, 20));
-    else words = pickWords(level, data.settings.count);
+    else words = pickWords(level, data.settings.count, unit);
     if (!words.length) { document.body.classList.remove("in-session"); return renderPage(); }
-    S = { mode, level, words, i: 0, correct: 0, wrong: [], answered: false, combo: 0, maxCombo: 0, xp: 0, levelUp: 0, answeredN: 0,
+    S = { mode, level, unit, words, i: 0, correct: 0, wrong: [], answered: false, combo: 0, maxCombo: 0, xp: 0, levelUp: 0, answeredN: 0,
       requeue: mode === "learn" || mode === "review", retry: [], set: words.slice(), skipped: [] };
     sfx.start();
     if (mode === "learn") { S.phase = "intro"; S.introI = 0; renderLearnIntro(); window.scrollTo(0, 0); return; }
@@ -1304,7 +1392,9 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       data.words[w.word] = { r: 1, x: 0, box: 3, due: dayNum() + INTERVALS[3] };
       persist();
       S.skipped.push(w);
-      const fresh = shuffle(poolFor(S.level).filter((x) => !data.words[x.word] && !S.words.includes(x)))[0];
+      const cand = (S.unit ? scopePool(S.level, S.unit) : S.level === "ALL" ? ALL_WORDS : (UNITS[S.level] || []).flatMap((u) => u.words))
+        .filter((x) => !data.words[x.word] && !S.words.includes(x));
+      const fresh = S.unit || S.level === "ALL" ? shuffle(cand)[0] : cand[0];
       if (fresh) { S.words[S.introI] = fresh; S.set = S.words.slice(); renderLearnIntro(); }
       else { S.words.splice(S.introI, 1); S.set = S.words.slice(); S.introI--; advance(); }
     });
@@ -1666,7 +1756,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
   }
 
   // ---------------- library ----------------
-  let libLevel = null, libQuery = "", libFilter = "all";
+  let libLevel = null, libQuery = "", libFilter = "all", libUnit = "";
   function renderLibrary() {
     setNav("library");
     keyHandler = null;
@@ -1679,6 +1769,10 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       </div>
       <div class="lib-toolbar">
         <input class="search" id="q" placeholder="ค้นหาคำศัพท์หรือความหมาย…" value="${esc(libQuery)}" />
+        ${libLevel !== "ALL" ? `<select class="filter" id="u" aria-label="กรองตามบท">
+          <option value="">ทุกบท</option>
+          ${(UNITS[libLevel] || []).map((u) => `<option value="${u.id}" ${libUnit === u.id ? "selected" : ""}>บทที่ ${u.no} ${esc(u.title)}</option>`).join("")}
+        </select>` : ""}
         <select class="filter" id="f" aria-label="กรองตามสถานะ">
           ${[["all", "ทุกสถานะ"], ["new", "ยังไม่เคยเรียน"], ["learning", "กำลังเรียนรู้"], ["mastered", "จำได้แล้ว"], ["due", "ถึงเวลาทบทวน"]].map(([v, t]) => `<option value="${v}" ${libFilter === v ? "selected" : ""}>${t}</option>`).join("")}
         </select>
@@ -1692,7 +1786,7 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     `;
     const draw = () => {
       const q = libQuery.trim().toLowerCase();
-      const list = poolFor(libLevel).filter((w) => (!q || w.word.toLowerCase().includes(q) || w.th.includes(q))
+      const list = scopePool(libLevel, libUnit).filter((w) => (!q || w.word.toLowerCase().includes(q) || w.th.includes(q))
         && (libFilter === "all" || (libFilter === "due" ? isDue(w.word) : status(w.word) === libFilter)));
       $app.querySelector("#list").innerHTML = (list.length ? `<p class="list-count">${list.length} คำ</p>` : "") + (list.length
         ? list.map((w) => `<details class="word-item">
@@ -1707,7 +1801,9 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
       bindSpeak($app.querySelector("#list"));
     };
     draw();
-    $app.querySelectorAll("[data-lib]").forEach((b) => b.addEventListener("click", () => { libLevel = b.dataset.lib; renderLibrary(); }));
+    $app.querySelectorAll("[data-lib]").forEach((b) => b.addEventListener("click", () => { libLevel = b.dataset.lib; libUnit = ""; renderLibrary(); }));
+    const us = $app.querySelector("#u");
+    if (us) us.addEventListener("change", (e) => { libUnit = e.target.value; draw(); });
     $app.querySelector("#q").addEventListener("input", (e) => { libQuery = e.target.value; draw(); });
     $app.querySelector("#f").addEventListener("change", (e) => { libFilter = e.target.value; draw(); });
   }

@@ -585,8 +585,8 @@ body.sheet-open { overflow: hidden; }
   background: var(--ink) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12 4 4 8-8'/%3E%3C/svg%3E") center/12px no-repeat;
 }
 [data-theme="dark"] .opt.on::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23141517' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12 4 4 8-8'/%3E%3C/svg%3E"); }
-.mode-opt { flex-direction: row; align-items: center; gap: 10px; padding-right: 30px; }
-.mode-opt.on { padding-right: 29px; }
+.mode-opt { flex-direction: row; align-items: center; gap: 10px; }
+
 .mode-opt .glyph { width: 36px; height: 36px; border-radius: 10px; flex: none; }
 .mode-opt .dual b { font-size: 11px; } .mode-opt .dual i { font-size: 10px; }
 .mode-opt.is-speed { grid-column: 1 / -1; }
@@ -1206,13 +1206,30 @@ html:not([data-theme="dark"]) .u-bar { background: #e3e6eb; }
   .voice-sel { flex: 1; max-width: none; }
 }
 
-/* selected option: highlighted frame instead of a check mark */
+/* selected option: a lit frame instead of a check mark */
 .opt.on::after, [data-theme="dark"] .opt.on::after { display: none !important; }
 html .opt.on.on.on, html[data-theme] .opt.on.on.on {
-  border: 2px solid var(--ac);
-  padding: 9px 11px;
-  background: color-mix(in srgb, var(--ac) 14%, var(--paper));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ac) 22%, transparent);
+  border: 1.5px solid var(--ac);
+  padding: 9.5px 11.5px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--ac) 20%, var(--paper)) 0%, color-mix(in srgb, var(--ac) 7%, var(--paper)) 100%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--ac) 35%, transparent),
+    0 8px 20px -10px color-mix(in srgb, var(--ac) 75%, transparent);
+  transform: translateY(-1px);
 }
 html .opt.on b { color: var(--ink); }
-.opt { transition: border-color .2s var(--ease-out), background-color .2s var(--ease-out), box-shadow .25s var(--ease-out); }
+html .opt.on small { color: color-mix(in srgb, var(--ink) 70%, var(--ac)); }
+html .opt.on .u-no, html .opt.on .glyph { background: var(--ac); color: var(--ac-ink); }
+.opt { transition: border-color .22s var(--ease-out), background .22s var(--ease-out), box-shadow .3s var(--ease-out), transform .3s var(--ease-out); }
+.opt:hover:not(.on) { border-color: color-mix(in srgb, var(--ac) 55%, var(--line)); }
+
+/* setup sheet: one scroll area only (the body), no outer dialog scrollbar */
+.sheet { overflow: hidden; display: flex; flex-direction: column; }
+.sheet-inner { max-height: min(88vh, 860px); min-height: 0; flex: 1; }
+.sheet-body { flex: 1; min-height: 0; overscroll-behavior: contain; padding-top: 6px; padding-bottom: 16px;
+  scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent; }
+.sheet-body::-webkit-scrollbar { width: 8px; }
+.sheet-body::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ink) 22%, transparent); border-radius: 99px; border: 2px solid var(--paper); }
+.sheet-body::-webkit-scrollbar-track { background: transparent; }
+@media (max-width: 600px) { .sheet-inner { max-height: 92vh; } }

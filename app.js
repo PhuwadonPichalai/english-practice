@@ -991,6 +991,10 @@ const BOOK = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke
     document.body.classList.add("sheet-open");
     sfx.open();
     if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+    // กันพลาด: ถ้าเบราว์เซอร์ไหนวาดหน้าต่างออกมาสูง 0 (เหลือแต่พื้นหลังเบลอ) ให้บังคับแสดงแบบปกติ
+    requestAnimationFrame(() => {
+      if (dlg.open && dlg.getBoundingClientRect().height < 40) { dlg.style.display = "block"; dlg.style.overflow = "auto"; }
+    });
     dlg.querySelector(".sheet-body").scrollTop = 0;
     dlg.querySelector("#goStart").focus({ preventScroll: true });
   }

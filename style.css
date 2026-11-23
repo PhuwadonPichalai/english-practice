@@ -1224,14 +1224,15 @@ html .opt.on .u-no, html .opt.on .glyph { background: var(--ac); color: var(--ac
 .opt { transition: border-color .22s var(--ease-out), background .22s var(--ease-out), box-shadow .3s var(--ease-out), transform .3s var(--ease-out); }
 .opt:hover:not(.on) { border-color: color-mix(in srgb, var(--ac) 55%, var(--line)); }
 
-/* setup sheet: one scroll area only (the body), no outer dialog scrollbar */
+/* setup sheet: one scroll area only (the body), no outer dialog scrollbar.
+   The dialog itself stays a plain block (making <dialog> a flex box collapsed it to 0px tall
+   in some browsers, leaving only the blurred backdrop). The inner wrapper is the flex column. */
 .sheet { overflow: hidden; }
-.sheet[open] { display: flex; flex-direction: column; }
-.sheet:not([open]) { display: none; }
-.sheet-inner { max-height: min(88vh, 860px); min-height: 0; flex: 1; }
-.sheet-body { flex: 1; min-height: 0; overscroll-behavior: contain; padding-top: 6px; padding-bottom: 16px;
+.sheet-inner { display: flex; flex-direction: column; max-height: min(88vh, 860px); }
+.sheet-head, .sheet-foot { flex: none; }
+.sheet-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-top: 6px; padding-bottom: 16px;
   scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent; }
 .sheet-body::-webkit-scrollbar { width: 8px; }
-.sheet-body::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ink) 22%, transparent); border-radius: 99px; border: 2px solid var(--paper); }
+.sheet-body::-webkit-scrollbar-thumb { background: rgba(127, 127, 127, .35); border-radius: 99px; border: 2px solid var(--paper); }
 .sheet-body::-webkit-scrollbar-track { background: transparent; }
 @media (max-width: 600px) { .sheet-inner { max-height: 92vh; } }

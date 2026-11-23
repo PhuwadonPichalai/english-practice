@@ -1225,7 +1225,9 @@ html .opt.on .u-no, html .opt.on .glyph { background: var(--ac); color: var(--ac
 .opt:hover:not(.on) { border-color: color-mix(in srgb, var(--ac) 55%, var(--line)); }
 
 /* setup sheet: one scroll area only (the body), no outer dialog scrollbar */
-.sheet { overflow: hidden; display: flex; flex-direction: column; }
+.sheet { overflow: hidden; }
+.sheet[open] { display: flex; flex-direction: column; }
+.sheet:not([open]) { display: none; }
 .sheet-inner { max-height: min(88vh, 860px); min-height: 0; flex: 1; }
 .sheet-body { flex: 1; min-height: 0; overscroll-behavior: contain; padding-top: 6px; padding-bottom: 16px;
   scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent; }
